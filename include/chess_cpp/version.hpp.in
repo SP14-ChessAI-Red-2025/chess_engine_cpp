@@ -1,0 +1,9 @@
+#pragma once
+
+namespace @PROJECT_NAME@ {
+    constexpr auto PROJECT_VERSION = "@PROJECT_VERSION@";
+    constexpr auto PROJECT_VERSION_MAJOR = "@PROJECT_VERSION_MAJOR@";
+    constexpr auto PROJECT_VERSION_MINOR = "@PROJECT_VERSION_MINOR@";
+    constexpr auto PROJECT_VERSION_PATCH = "@PROJECT_VERSION_PATCH@";
+    constexpr auto PROJECT_VERSION_TWEAK = "@PROJECT_VERSION_TWEAK@";
+}

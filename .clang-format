@@ -1,0 +1,8 @@
+BasedOnStyle: llvm
+IndentWidth: 4
+ColumnLimit: 120
+PointerAlignment: Left
+SpaceBeforeParens: Never
+SortIncludes: Never
+AllowShortIfStatementsOnASingleLine : WithoutElse
+AlwaysBreakTemplateDeclarations: Yes

@@ -1,0 +1,21 @@
+{
+  "name": "chess-cpp",
+  "version": "0.0.0.1",
+
+  "dependencies": [
+
+  ],
+  "default-features": [],
+  "features": {
+    "test": {
+      "description": "Dependencies for testing",
+      "dependencies": [
+        {
+          "name": "gtest",
+          "version>=": "1.14.0"
+        }
+      ]
+    }
+  },
+  "builtin-baseline": "c9e4056f04448359c677cff0f1f4d01401fa9270"
+}
