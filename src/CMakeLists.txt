@@ -1,4 +1,4 @@
-add_library(chess_cpp chess_cpp.cpp ../include/chess_cpp/chess_cpp.hpp)
+add_library(chess_cpp SHARED chess_cpp.cpp ../include/chess_cpp/chess_cpp.hpp)
 
 add_executable(chess_cpp_main chess_cpp_main.cpp)
 
