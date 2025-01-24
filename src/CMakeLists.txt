@@ -12,7 +12,7 @@ else()
     target_compile_options(chess_cpp PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-target_compile_features(chess_cpp PUBLIC c_std_11 cxx_std_17)
+target_compile_features(chess_cpp PUBLIC c_std_11 cxx_std_20)
 
 # Projects linking to this library need to explicitly specify the subfolder
 # That isn't necessary within the project, though

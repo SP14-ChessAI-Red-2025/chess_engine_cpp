@@ -4,6 +4,15 @@
 
 #include <cstddef>
 #include <cstdint>
+namespace chess {
+enum class piece {
+    Pawn = 0,
+    Knight = 1,
+    Bishop = 2,
+    Rook = 3,
+    Queen = 4,
+    King = 5
+};
 
 struct board_position {
     std::uint8_t rank;
@@ -17,7 +26,7 @@ struct chess_move {
 };
 
 struct board_state {
-    int i = 4567;
+    piece pieces[8][8];
 };
 
 extern "C" chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves);
