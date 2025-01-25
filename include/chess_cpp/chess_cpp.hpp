@@ -7,13 +7,13 @@
 
 namespace chess {
 enum class piece_type {
-    None = 0, // Used to indicate that a square is empty
-    Pawn = 1,
-    Knight = 2,
-    Bishop = 3,
-    Rook = 4,
-    Queen = 5,
-    King = 6
+    none = 0, // Used to indicate that a square is empty
+    pawn = 1,
+    knight = 2,
+    bishop = 3,
+    rook = 4,
+    queen = 5,
+    king = 6
 };
 
 enum class player {
@@ -39,16 +39,20 @@ struct chess_move {
 };
 
 struct board_state {
-    piece pieces[8][8] = {};
+    // pieces[0] is rank 1, and pieces[7] is rank 8
+    // pieces[2][3] is rank 3, file D
+    piece pieces[8][8];
 
     // Whether the players have castled yet
     // White is at index 0, black at index 1
-    bool has_castled[2] = {};
+    bool has_castled[2];
 
     // Whether the kings are currently in check
-    bool in_check[2] = {};
+    bool in_check[2];
 
-    player current_player = player::white;
+    player current_player;
+
+    static board_state initial_board_state();
 };
 
 // Functions in this namespace will be called from Python
