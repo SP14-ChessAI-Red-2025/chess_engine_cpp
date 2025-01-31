@@ -98,6 +98,15 @@ extern "C" chess_move* get_valid_moves(board_state board_state, std::size_t* num
 // Free a list of moves allocated by get_valid_moves
 extern "C" void free_moves(chess_move* moves);
 
+// Applies a move to board_state
+// Updates board_state->pieces
+// Updates board_state->en_passant_valid
+// Updates board_state->can_castle if the move if a castle, or the move is of a king or rook that has not moved yet
+// Increments board_state->turns_since_last_capture_or_pawn if necessary
+// Toggles board_state->current_player
+extern "C" void apply_move(board_state* board_state, chess_move move);
+
+// Get a board_state representing a game that has not yet started
 extern "C" board_state get_initial_board_state();
 }
 }

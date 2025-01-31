@@ -126,6 +126,10 @@ void free_moves(chess_move* moves) {
     delete[] moves;
 }
 
+void apply_move(board_state* board_state, chess_move move) {
+    // TODO: Implement
+}
+
 board_state get_initial_board_state() {
     return board_state::initial_board_state();
 }

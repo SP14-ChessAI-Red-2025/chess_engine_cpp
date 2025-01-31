@@ -37,6 +37,12 @@ def main():
     free_moves.restype = None
 
 
+    apply_move = lib.apply_move
+
+    apply_move.argtypes = [POINTER(BoardState), ChessMove]
+    apply_move.restype = None
+
+
     size = c_size_t()
 
     board_state = get_initial_board_state()
