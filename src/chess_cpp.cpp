@@ -63,6 +63,10 @@ std::vector<chess_move> get_moves_for_piece_type(const board_state& board, piece
 board_state board_state::initial_board_state() {
     board_state board = {};
 
+    for(bool& b : board.can_castle) {
+        b = true;
+    }
+
     using enum piece_type;
     using enum player;
 

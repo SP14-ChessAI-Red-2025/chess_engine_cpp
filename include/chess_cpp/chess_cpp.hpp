@@ -43,11 +43,13 @@ struct board_state {
     // pieces[2][3] is rank 3, file D
     piece pieces[8][8];
 
-    // Whether the players have castled yet
-    // White is at index 0, black at index 1
-    bool has_castled[2];
+    // Whether the players are allowed to castle
+    // Kingside white castling is at index 0, queenside white castling at index 1
+    // Kingside black castling is at index 2, queenside black castling at index 3
+    bool can_castle[4];
 
     // Whether the kings are currently in check
+    // White is at index 0, black at index 1
     bool in_check[2];
 
     // Whether a pawn is able to be captured via en passant
@@ -55,6 +57,10 @@ struct board_state {
     // Indices 0-7 represent the white pawns, on files A-H
     // Indices 8-15 represent the black pawns, on files A-H
     bool en_passant_valid[16];
+
+    // Turns since a capture has been made or a pawn has benn moved
+    // It this reaches 50, the game is a draw
+    int turns_since_last_capture_or_pawn;
 
     player current_player;
 
