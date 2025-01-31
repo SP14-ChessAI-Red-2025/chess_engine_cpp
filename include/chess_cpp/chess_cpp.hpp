@@ -50,6 +50,12 @@ struct board_state {
     // Whether the kings are currently in check
     bool in_check[2];
 
+    // Whether a pawn is able to be captured via en passant
+    // This is only true if the pawn has just moved 2 squares on the previous turn
+    // Indices 0-7 represent the white pawns, on files A-H
+    // Indices 8-15 represent the black pawns, on files A-H
+    bool en_passant_valid[16];
+
     player current_player;
 
     static board_state initial_board_state();

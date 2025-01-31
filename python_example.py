@@ -11,7 +11,7 @@ class Piece(Structure):
     _fields_ = [("piece_type", c_int), ("player", c_int)]
 
 class BoardState(Structure):
-    _fields_ = [("pieces", (Piece * 8) * 8), ("has_castled", c_bool * 2), ("in_check", c_bool * 2), ("current_player", c_int)]
+    _fields_ = [("pieces", (Piece * 8) * 8), ("has_castled", c_bool * 2), ("in_check", c_bool * 2), ("en_passant_valid", c_bool * 16), ("current_player", c_int)]
 
 
 def main():
