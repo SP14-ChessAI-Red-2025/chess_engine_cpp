@@ -29,6 +29,12 @@ enum class move_type : int {
     promotion = 4
 };
 
+enum class game_status : int {
+    normal = 0,
+    draw = 1,
+    checkmate = 2
+};
+
 struct board_position {
     std::uint8_t rank;
     std::uint8_t file;
@@ -75,6 +81,9 @@ struct board_state {
     int turns_since_last_capture_or_pawn;
 
     player current_player;
+
+    // Status of the game: normal, a draw, or a checkmate
+    game_status status;
 
     static board_state initial_board_state();
 };
