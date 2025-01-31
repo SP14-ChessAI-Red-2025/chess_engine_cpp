@@ -6,7 +6,7 @@
 #include <cstdint>
 
 namespace chess {
-enum class piece_type {
+enum class piece_type : int {
     none = 0, // Used to indicate that a square is empty
     pawn = 1,
     knight = 2,
@@ -16,9 +16,17 @@ enum class piece_type {
     king = 6
 };
 
-enum class player {
+enum class player : int {
     white = 0,
     black = 1
+};
+
+enum class move_type : int {
+    normal_move = 0,
+    capture = 1,
+    en_passant = 2,
+    castle = 3,
+    promotion = 4
 };
 
 struct board_position {
@@ -33,9 +41,13 @@ struct piece {
 };
 
 struct chess_move {
+    move_type type;
+
     board_position start_position;
 
     board_position target_position;
+
+    piece_type promotion_target;
 };
 
 struct board_state {

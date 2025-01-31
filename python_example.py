@@ -5,7 +5,7 @@ class BoardPosition(Structure):
     _fields_ = [("rank", c_uint8), ("file", c_uint8)]
 
 class ChessMove(Structure):
-    _fields_ = [("start_position", BoardPosition), ("target_position", BoardPosition)]
+    _fields_ = [("type", c_int), ("start_position", BoardPosition), ("target_position", BoardPosition), ("promotion_target", c_int)]
 
 class Piece(Structure):
     _fields_ = [("piece_type", c_int), ("player", c_int)]
