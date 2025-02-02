@@ -19,8 +19,61 @@ std::vector<chess_move> get_bishop_moves(const board_state& board, board_positio
 }
 
 std::vector<chess_move> get_knight_moves(const board_state& board, board_position position) {
-    // TODO: implement
-    return {};
+    std::vector<chess_move> moves;
+
+    struct board_offset {
+        int rank_offset;
+        int file_offset;
+    };
+
+    board_offset offsets[] = {
+        {1, 2},
+        {1, -2},
+        {-1, 2},
+        {-1, -2},
+        {2, 1},
+        {2, -1},
+        {-2, 1},
+        {-2, -1}
+    };
+
+    for(auto offset : offsets) {
+        int rank = position.rank + offset.rank_offset;
+        int file = position.file + offset.file_offset;
+
+        // Target position would be out of bounds
+        if(rank < 0 || rank >= 8 || file < 0 || file >= 8) continue;
+
+        board_position target_position = {
+            static_cast<std::uint8_t>(rank),
+            static_cast<std::uint8_t>(file)
+        };
+
+        auto player = board.pieces[position.rank][position.file].player;
+
+        auto target_piece = board.pieces[target_position.rank][target_position.file];
+
+        if(target_piece.type == piece_type::none) {
+            moves.push_back(chess_move{
+                .type = move_type::normal_move,
+                .start_position = position,
+                .target_position = target_position,
+            });
+
+            continue;
+        }
+
+        if(target_piece.player != player) {
+            moves.push_back(chess_move{
+                .type = move_type::capture,
+                .start_position = position,
+                .target_position = target_position
+            });
+        }
+    }
+
+
+    return moves;
 }
 
 std::vector<chess_move> get_pawn_moves(const board_state& board, board_position position) {
@@ -95,10 +148,7 @@ board_state board_state::initial_board_state() {
 
 namespace python {
 chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) {
-    std::vector<chess_move> valid_moves = {chess::chess_move{
-        .start_position = {1, 2},
-        .target_position = {3, 4}
-    }};
+    std::vector<chess_move> valid_moves = {};
 
     for(std::uint8_t rank = 0; rank < 8; rank++) {
         for(std::uint8_t file = 0; file < 8; file++) {
@@ -108,7 +158,9 @@ chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) {
                 .file = file
             };
             if(piece.type != piece_type::none && board_state.pieces[rank][file].player == board_state.current_player) {
-                std::ranges::copy(get_moves_for_piece_type(board_state, piece, position), std::back_inserter(valid_moves));
+                auto moves = get_moves_for_piece_type(board_state, piece, position);
+
+                std::ranges::copy(moves, std::back_inserter(valid_moves));
             }
         }
     }
