@@ -173,8 +173,28 @@ std::vector<chess_move> get_knight_moves(const board_state& board, board_positio
 }
 
 std::vector<chess_move> get_pawn_moves(const board_state& board, board_position position) {
-    // TODO: implement
-    return {};
+    std::vector<chess_move> moves;
+
+    auto player = board.pieces[position.rank][position.file].player;
+
+    auto it = std::back_inserter(moves);
+
+    // Moving 2 spaces is only allowed if the pawn is at its starting position
+    bool double_move_allowed = (position.rank == 1 && player == player::white) || (position.rank == 6 && player == player::black);
+
+    int offset_multiplier = player == player::white ? 1 : -1;  // Used to change the direction of the move if it is black's move
+
+    for(int i = 1; i <= 2; i++) {
+        board_offset offset = {
+            .rank_offset = i * offset_multiplier
+        };
+
+        bool can_continue = check_position(board, player, position, offset, it);
+
+        if(!can_continue || !double_move_allowed) break;
+    }
+
+    return moves;
 }
 
 std::vector<chess_move> get_moves_for_piece_type(const board_state& board, piece piece, board_position position) {
