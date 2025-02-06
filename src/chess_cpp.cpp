@@ -5,12 +5,84 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <iterator>
 
 namespace chess {
 
+struct board_offset {
+    int rank_offset;
+    int file_offset;
+};
+
+bool in_bounds(int rank, int file) {
+    return !(rank < 0 || rank >= 8 || file < 0 || file >= 8);
+}
+
+// Checks if the position determined by position + offset is in bounds
+// If it is, writes the move to the iterator it
+// Returns true if the target position is empty, otherwise returns false
+bool check_position(const board_state& board, player player, board_position position, board_offset offset, std::back_insert_iterator<std::vector<chess_move>> it) {
+    bool can_continue = true;
+
+    int rank = position.rank + offset.rank_offset;
+    int file = position.file + offset.file_offset;
+
+    if(!in_bounds(rank, file)) return false;
+
+    auto type = move_type::normal_move;
+
+    if(board.pieces[rank][file].type != piece_type::none) {
+        // Encountered one of our own pieces, cannot move further
+        if(board.pieces[rank][file].player == player) return false;
+
+        // Encountered an enemy piece
+        // We can capture it, but cannot move past it
+        type = move_type::capture;
+
+        can_continue = false;
+    }
+
+    *it = {
+        .type = type,
+        .start_position = position,
+        .target_position = board_position(rank, file), // Rank and file were already bounds-checked, so narrowing conversion is ok
+    };
+
+    return can_continue;
+}
+
 std::vector<chess_move> get_rook_moves(const board_state& board, board_position position, std::size_t limit = 7) {
-    // TODO: implement
-    return {};
+    std::vector<chess_move> moves;
+
+    auto player = board.pieces[position.rank][position.file].player;
+
+    auto it = std::back_inserter(moves);
+
+    for(int i = 1; i <= limit; i++) {
+        bool can_continue = check_position(board, player, position, {i, 0}, it);
+
+        if(!can_continue) break;
+    }
+
+    for(int i = 1; i <= limit; i++) {
+        bool can_continue = check_position(board, player, position, {-i, 0}, it);
+
+        if(!can_continue) break;
+    }
+
+    for(int i = 1; i <= limit; i++) {
+        bool can_continue = check_position(board, player, position, {0, i}, it);
+
+        if(!can_continue) break;
+    }
+
+    for(int i = 1; i <= limit; i++) {
+        bool can_continue = check_position(board, player, position, {0, -i}, it);
+
+        if(!can_continue) break;
+    }
+
+    return moves;
 }
 
 std::vector<chess_move> get_bishop_moves(const board_state& board, board_position position, std::size_t limit = 7) {
@@ -20,11 +92,6 @@ std::vector<chess_move> get_bishop_moves(const board_state& board, board_positio
 
 std::vector<chess_move> get_knight_moves(const board_state& board, board_position position) {
     std::vector<chess_move> moves;
-
-    struct board_offset {
-        int rank_offset;
-        int file_offset;
-    };
 
     board_offset offsets[] = {
         {1, 2},
