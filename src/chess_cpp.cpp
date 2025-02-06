@@ -122,6 +122,8 @@ std::vector<chess_move> get_bishop_moves(const board_state& board, board_positio
 std::vector<chess_move> get_knight_moves(const board_state& board, board_position position) {
     std::vector<chess_move> moves;
 
+    auto player = board.pieces[position.rank][position.file].player;
+
     board_offset offsets[] = {
         {1, 2},
         {1, -2},
@@ -145,12 +147,10 @@ std::vector<chess_move> get_knight_moves(const board_state& board, board_positio
             static_cast<std::uint8_t>(file)
         };
 
-        auto player = board.pieces[position.rank][position.file].player;
-
         auto target_piece = board.pieces[target_position.rank][target_position.file];
 
         if(target_piece.type == piece_type::none) {
-            moves.push_back(chess_move{
+            moves.push_back({
                 .type = move_type::normal_move,
                 .start_position = position,
                 .target_position = target_position,
@@ -160,7 +160,7 @@ std::vector<chess_move> get_knight_moves(const board_state& board, board_positio
         }
 
         if(target_piece.player != player) {
-            moves.push_back(chess_move{
+            moves.push_back({
                 .type = move_type::capture,
                 .start_position = position,
                 .target_position = target_position
