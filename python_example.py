@@ -4,8 +4,19 @@ from ctypes import *
 class BoardPosition(Structure):
     _fields_ = [("rank", c_uint8), ("file", c_uint8)]
 
+    def __str__(self) -> str:
+        file_str = chr(ord("a") + self.file);
+
+        return f"{file_str}{self.rank+1}"
+
 class ChessMove(Structure):
     _fields_ = [("type", c_int), ("start_position", BoardPosition), ("target_position", BoardPosition), ("promotion_target", c_int)]
+
+    def __str__(self) -> str:
+        # TODO: customize output for castling and promotion
+        type_str_arr = ["Move", "Capture", "En passant", "Castle", "Promotion"]
+
+        return f"{type_str_arr[self.type]}: {self.start_position} -> {self.target_position}"
 
 class Piece(Structure):
     _fields_ = [("piece_type", c_int), ("player", c_int)]
@@ -52,8 +63,7 @@ def main():
     valid_moves_array = (ChessMove * size.value).from_address(addressof(valid_moves.contents))
 
     def print_move(cm):
-        coords = [cm.start_position.rank, cm.start_position.file, cm.target_position.rank, cm.target_position.file]
-        print(f"({coords[0]}, {coords[1]}) -> ({coords[2]}, {coords[3]})")
+        print(f"{cm}")
 
     for move in valid_moves_array:
         print_move(move)
