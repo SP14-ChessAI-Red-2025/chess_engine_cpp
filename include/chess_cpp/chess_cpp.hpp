@@ -106,6 +106,9 @@ extern "C" void free_moves(chess_move* moves);
 // Toggles board_state->current_player
 extern "C" void apply_move(board_state* board_state, chess_move move);
 
+// Have the AI make a move
+extern "C" void ai_move(board_state* board_state, std::int32_t difficulty);
+
 // Get a board_state representing a game that has not yet started
 extern "C" board_state get_initial_board_state();
 }

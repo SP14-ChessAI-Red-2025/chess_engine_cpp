@@ -298,6 +298,10 @@ void apply_move(board_state* board_state, chess_move move) {
     // TODO: Implement
 }
 
+void ai_move(board_state* board_state, std::int32_t difficulty) {
+    // TODO: Implement
+}
+
 board_state get_initial_board_state() {
     return board_state::initial_board_state();
 }
