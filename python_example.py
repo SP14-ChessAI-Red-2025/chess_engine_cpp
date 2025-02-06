@@ -24,6 +24,15 @@ class Piece(Structure):
 class BoardState(Structure):
     _fields_ = [("pieces", (Piece * 8) * 8), ("can_castle", c_bool * 2), ("in_check", c_bool * 2), ("en_passant_valid", c_bool * 16), ("turns_since_last_capture_or_pawn", c_int), ("current_player", c_int), ("status", c_int)]
 
+def piece_type_to_str(piece_type: int) -> str:
+    return
+
+def move_to_str(move: ChessMove, board_state: BoardState) -> str:
+    piece_type = board_state.pieces[move.start_position.rank][move.start_position.file].piece_type
+    piece_str = ["none", "pawn", "knight", "bishop", "rook", "queen", "king"][piece_type]
+
+    return f"{piece_str}: {move}"
+
 
 def main():
     if len(sys.argv) < 2:
@@ -62,11 +71,9 @@ def main():
 
     valid_moves_array = (ChessMove * size.value).from_address(addressof(valid_moves.contents))
 
-    def print_move(cm):
-        print(f"{cm}")
 
     for move in valid_moves_array:
-        print_move(move)
+        print(move_to_str(move, board_state))
 
     free_moves(valid_moves)
 
