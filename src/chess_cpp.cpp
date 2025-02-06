@@ -86,8 +86,37 @@ std::vector<chess_move> get_rook_moves(const board_state& board, board_position 
 }
 
 std::vector<chess_move> get_bishop_moves(const board_state& board, board_position position, std::size_t limit = 7) {
-    // TODO: implement
-    return {};
+    std::vector<chess_move> moves;
+
+    auto player = board.pieces[position.rank][position.file].player;
+
+    auto it = std::back_inserter(moves);
+
+    for(int i = 1; i <= limit; i++) {
+        bool can_continue = check_position(board, player, position, {i, i}, it);
+
+        if(!can_continue) break;
+    }
+
+    for(int i = 1; i <= limit; i++) {
+        bool can_continue = check_position(board, player, position, {-i, i}, it);
+
+        if(!can_continue) break;
+    }
+
+    for(int i = 1; i <= limit; i++) {
+        bool can_continue = check_position(board, player, position, {i, -i}, it);
+
+        if(!can_continue) break;
+    }
+
+    for(int i = 1; i <= limit; i++) {
+        bool can_continue = check_position(board, player, position, {-i, -i}, it);
+
+        if(!can_continue) break;
+    }
+
+    return moves;
 }
 
 std::vector<chess_move> get_knight_moves(const board_state& board, board_position position) {
