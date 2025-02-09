@@ -194,6 +194,34 @@ std::vector<chess_move> get_pawn_moves(const board_state& board, board_position 
         if(!can_continue || !double_move_allowed) break;
     }
 
+    board_offset capture_offsets[] = {
+        {
+            .rank_offset = offset_multiplier,
+            .file_offset = 1
+        }, {
+            .rank_offset = offset_multiplier,
+            .file_offset = -1
+        }
+    };
+
+    for(auto [rank_offset, file_offset] : capture_offsets) {
+        int target_rank = position.rank + rank_offset;
+        int target_file = position.file + file_offset;
+
+        if(in_bounds(target_rank, target_file)) {
+            if(board.pieces[target_rank][target_file].player != player) {
+                moves.push_back({
+                    .type = move_type::capture,
+                    .start_position = position,
+                    .target_position = board_position{
+                        .rank = static_cast<std::uint8_t>(target_rank),
+                        .file = static_cast<std::uint8_t>(target_file)
+                    }
+                });
+            }
+        }
+    }
+
     return moves;
 }
 
