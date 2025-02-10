@@ -51,6 +51,48 @@ bool check_position(const board_state& board, player player, board_position posi
     return can_continue;
 }
 
+std::vector<chess_move> get_castle_moves(const board_state& board, board_position position) {
+    // Can only castle if the rook is in the starting file
+    if(position.file != 0 && position.file != 7) return {};
+
+    auto player = board.pieces[position.rank][position.file].player;
+
+    bool kingside = position.file != 0;
+
+    bool castling_allowed = board.can_castle[player == player::white ? (kingside ? 0 : 1) : (kingside ? 2 : 3)];
+
+    if(!castling_allowed) return {};
+
+    std::vector<chess_move> moves;
+
+    std::uint8_t home_rank = player == player::white ? 0 : 7;
+
+    if(kingside) {
+        for(std::uint8_t file = 5; file <= 6; file++) {
+            if(board.pieces[home_rank][file].type != piece_type::none) {
+                castling_allowed = false;
+                break;
+            }
+        }
+    } else {
+        for(std::uint8_t file = 1; file <= 3; file++) {
+            if(board.pieces[home_rank][file].type != piece_type::none) {
+                castling_allowed = false;
+                break;
+            }
+        }
+    }
+
+    if(castling_allowed) {
+        moves.push_back({
+            .type = move_type::castle,
+            .start_position = position
+        });
+    }
+
+    return moves;
+}
+
 std::vector<chess_move> get_rook_moves(const board_state& board, board_position position, std::size_t limit = 7) {
     std::vector<chess_move> moves;
 
@@ -233,8 +275,14 @@ std::vector<chess_move> get_moves_for_piece_type(const board_state& board, piece
         return get_knight_moves(board, position);
     case piece_type::bishop:
         return get_bishop_moves(board, position);
-    case piece_type::rook:
-        return get_rook_moves(board, position);
+    case piece_type::rook: {
+        auto rook_moves = get_rook_moves(board, position);
+        auto castle_moves = get_castle_moves(board, position);
+
+        std::ranges::copy(castle_moves, std::back_inserter(rook_moves));
+
+        return rook_moves;
+    }
     case piece_type::queen: {
         auto horizontal_moves = get_rook_moves(board, position);
         auto diagonal_moves = get_bishop_moves(board, position);

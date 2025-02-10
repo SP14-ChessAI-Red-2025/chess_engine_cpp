@@ -51,8 +51,10 @@ struct chess_move {
 
     board_position start_position;
 
+    // Meaningless if type == castle
     board_position target_position;
 
+    // Only meaningful if type == promotion
     piece_type promotion_target;
 };
 
