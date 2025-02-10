@@ -90,8 +90,15 @@ struct board_state {
     static board_state initial_board_state();
 };
 
+struct chess_ai_state {};
+
 // Functions in this namespace will be called from Python
 namespace python {
+// Initialize any long lived state used by the AI
+extern "C" void* init_ai_state();
+// Free any resources associated with state
+extern "C" void free_ai_state(void* state);
+
 // Returns an array of valid moves for a given board state
 // Writes the number of valid moves to *num_moves
 // The returned array must be freed with free_moves

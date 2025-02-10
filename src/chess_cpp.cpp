@@ -339,6 +339,14 @@ board_state board_state::initial_board_state() {
 
 
 namespace python {
+void* init_ai_state() {
+    return new chess_ai_state{};
+}
+
+void free_ai_state(void* state) {
+    delete static_cast<chess_ai_state*>(state);
+}
+
 chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) {
     std::vector<chess_move> valid_moves = {};
 

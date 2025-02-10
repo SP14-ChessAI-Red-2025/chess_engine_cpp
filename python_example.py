@@ -24,6 +24,9 @@ class Piece(Structure):
 class BoardState(Structure):
     _fields_ = [("pieces", (Piece * 8) * 8), ("can_castle", c_bool * 2), ("in_check", c_bool * 2), ("en_passant_valid", c_bool * 16), ("turns_since_last_capture_or_pawn", c_int), ("current_player", c_int), ("status", c_int)]
 
+class ChessAIState(Structure):
+    pass
+
 def piece_type_to_str(piece_type: int) -> str:
     return
 
@@ -62,6 +65,13 @@ def main():
     apply_move.argtypes = [POINTER(BoardState), ChessMove]
     apply_move.restype = None
 
+    init_ai_state = lib.init_ai_state
+    init_ai_state.restype = POINTER(ChessAIState)
+
+    free_ai_state = lib.free_ai_state
+    free_ai_state.argtypes = [c_void_p]
+    free_ai_state.restype = None
+
 
     size = c_size_t()
 
@@ -71,11 +81,15 @@ def main():
 
     valid_moves_array = (ChessMove * size.value).from_address(addressof(valid_moves.contents))
 
+    ai_state = init_ai_state()
+
 
     for move in valid_moves_array:
         print(move_to_str(move, board_state))
 
     free_moves(valid_moves)
+
+    free_ai_state(ai_state)
 
 
 if __name__ == "__main__":
