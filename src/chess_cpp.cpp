@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <iterator>
+#include <optional>
 
 namespace chess {
 
@@ -18,16 +19,31 @@ bool in_bounds(int rank, int file) {
     return !(rank < 0 || rank >= 8 || file < 0 || file >= 8);
 }
 
+std::optional<board_position> apply_offset(board_position position, board_offset offset) {
+    int rank = position.rank + offset.rank_offset;
+    int file = position.file + offset.file_offset;
+
+    if(in_bounds(rank, file)) {
+        return {{
+            .rank = static_cast<std::uint8_t>(rank),
+            .file = static_cast<std::uint8_t>(file)
+        }};
+    }
+
+    return std::nullopt;
+}
+
 // Checks if the position determined by position + offset is in bounds
 // If it is, writes the move to the iterator it
 // Returns true if the target position is empty, otherwise returns false
 bool check_position(const board_state& board, player player, board_position position, board_offset offset, std::back_insert_iterator<std::vector<chess_move>> it) {
     bool can_continue = true;
 
-    int rank = position.rank + offset.rank_offset;
-    int file = position.file + offset.file_offset;
+    auto target_position = apply_offset(position, offset);
 
-    if(!in_bounds(rank, file)) return false;
+    if(!target_position) return false;
+
+    auto [rank, file] = *target_position;
 
     auto type = move_type::normal_move;
 
@@ -178,24 +194,19 @@ std::vector<chess_move> get_knight_moves(const board_state& board, board_positio
     };
 
     for(auto offset : offsets) {
-        int rank = position.rank + offset.rank_offset;
-        int file = position.file + offset.file_offset;
+        auto target_position = apply_offset(position, offset);
 
-        // Target position would be out of bounds
-        if(rank < 0 || rank >= 8 || file < 0 || file >= 8) continue;
+        if(!target_position) continue;
 
-        board_position target_position = {
-            static_cast<std::uint8_t>(rank),
-            static_cast<std::uint8_t>(file)
-        };
+        auto [rank, file] = *target_position;
 
-        auto target_piece = board.pieces[target_position.rank][target_position.file];
+        auto target_piece = board.pieces[rank][file];
 
         if(target_piece.type == piece_type::none) {
             moves.push_back({
                 .type = move_type::normal_move,
                 .start_position = position,
-                .target_position = target_position,
+                .target_position = *target_position
             });
 
             continue;
@@ -205,7 +216,7 @@ std::vector<chess_move> get_knight_moves(const board_state& board, board_positio
             moves.push_back({
                 .type = move_type::capture,
                 .start_position = position,
-                .target_position = target_position
+                .target_position = *target_position
             });
         }
     }
@@ -246,21 +257,19 @@ std::vector<chess_move> get_pawn_moves(const board_state& board, board_position 
         }
     };
 
-    for(auto [rank_offset, file_offset] : capture_offsets) {
-        int target_rank = position.rank + rank_offset;
-        int target_file = position.file + file_offset;
+    for(auto offset : capture_offsets) {
+        auto target_position = apply_offset(position, offset);
 
-        if(in_bounds(target_rank, target_file)) {
-            if(board.pieces[target_rank][target_file].player != player) {
-                moves.push_back({
-                    .type = move_type::capture,
-                    .start_position = position,
-                    .target_position = board_position{
-                        .rank = static_cast<std::uint8_t>(target_rank),
-                        .file = static_cast<std::uint8_t>(target_file)
-                    }
-                });
-            }
+        if(!target_position) continue;
+
+        auto [rank, file] = *target_position;
+
+        if(board.pieces[rank][file].player != player) {
+            moves.push_back({
+                .type = move_type::capture,
+                .start_position = position,
+                .target_position = *target_position
+            });
         }
     }
 
