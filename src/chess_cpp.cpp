@@ -164,28 +164,14 @@ std::vector<chess_move> get_bishop_moves(const board_state& board, board_positio
 
     auto it = std::back_inserter(moves);
 
-    for(int i = 1; i <= limit; i++) {
-        bool can_continue = check_position(board, player, position, {i, i}, it);
+    board_offset offsets[] = {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
 
-        if(!can_continue) break;
-    }
+    for(auto offset : offsets) {
+        for(int i = 1; i <= limit; i++) {
+            bool can_continue = check_position(board, player, position, {i * offset.rank_offset, i * offset.file_offset}, it);
 
-    for(int i = 1; i <= limit; i++) {
-        bool can_continue = check_position(board, player, position, {-i, i}, it);
-
-        if(!can_continue) break;
-    }
-
-    for(int i = 1; i <= limit; i++) {
-        bool can_continue = check_position(board, player, position, {i, -i}, it);
-
-        if(!can_continue) break;
-    }
-
-    for(int i = 1; i <= limit; i++) {
-        bool can_continue = check_position(board, player, position, {-i, -i}, it);
-
-        if(!can_continue) break;
+            if(!can_continue) break;
+        }
     }
 
     return moves;
