@@ -202,23 +202,21 @@ std::vector<chess_move> get_knight_moves(const board_state& board, board_positio
 
         auto target_piece = board.pieces[rank][file];
 
-        if(target_piece.type == piece_type::none) {
-            moves.push_back({
-                .type = move_type::normal_move,
-                .start_position = position,
-                .target_position = *target_position
-            });
+        move_type type;
 
+        if(target_piece.type == piece_type::none) {
+            type = move_type::normal_move;
+        } else if(target_piece.player != player) {
+            type = move_type::capture;
+        } else {
             continue;
         }
 
-        if(target_piece.player != player) {
-            moves.push_back({
-                .type = move_type::capture,
-                .start_position = position,
-                .target_position = *target_position
-            });
-        }
+        moves.push_back({
+            .type = type,
+            .start_position = position,
+            .target_position = *target_position
+        });
     }
 
 
