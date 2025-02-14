@@ -52,6 +52,8 @@ struct chess_move {
     board_position start_position;
 
     // Meaningless if type == castle
+    // If type == en_passant, this refers to the position where the capturing pawn will move to
+    // The captured pawn's position has the same file, but with a rank 1 closer to the center
     board_position target_position;
 
     // Only meaningful if type == promotion

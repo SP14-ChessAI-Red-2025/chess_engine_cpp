@@ -67,6 +67,39 @@ bool check_position(const board_state& board, player player, board_position posi
     return can_continue;
 }
 
+// Checks if the pawn at start_position can perform any en passant captures, and writes them to it
+void get_en_passant_moves(const board_state& board, board_position start_position, std::back_insert_iterator<std::vector<chess_move>> it) {
+    auto player = board.pieces[start_position.rank][start_position.file].player;
+
+    // Check if pawn is on the correct rank to perform an en passant capture
+    if(start_position.rank != (player == player::white ? 4 : 3)) return;
+
+    std::uint8_t target_rank = player == player::white ? 5 : 2; // The rank we move to
+
+    int target_files[] = {
+        start_position.file - 1,
+        start_position.file + 1
+    };
+
+    for(auto file : target_files) {
+        if(file < 0 || file > 7) continue;
+
+        if(!board.en_passant_valid[file + (player == player::white ? 8 : 0)]) continue;
+
+        // en_passant_valid is only set to true immediately after the enemy pawn moves,
+        // so we don't need to check if pieces[capture_rank][file] contains an enemy piece
+
+        *it = {
+            .type = move_type::en_passant,
+            .start_position = start_position,
+            .target_position = {
+                .rank = target_rank,
+                .file = static_cast<std::uint8_t>(file)
+            }
+        };
+    }
+}
+
 // Writes 4 chess_move instances, one for each possible promotion target, to it
 void get_promotion_moves(board_position start_position, board_position target_position, std::back_insert_iterator<std::vector<chess_move>> it) {
     piece_type promotion_targets[] = {piece_type::queen, piece_type::rook, piece_type::bishop, piece_type::knight};
@@ -285,6 +318,8 @@ std::vector<chess_move> get_pawn_moves(const board_state& board, board_position 
             });
         }
     }
+
+    get_en_passant_moves(board, position, it);
 
     return moves;
 }
