@@ -163,28 +163,14 @@ std::vector<chess_move> get_rook_moves(const board_state& board, board_position 
 
     auto it = std::back_inserter(moves);
 
-    for(int i = 1; i <= limit; i++) {
-        bool can_continue = check_position(board, player, position, {i, 0}, it);
+    board_offset offsets[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
-        if(!can_continue) break;
-    }
+    for(auto offset : offsets) {
+        for(int i = 1; i <= limit; i++) {
+            bool can_continue = check_position(board, player, position, {offset.rank_offset * i, offset.file_offset * i}, it);
 
-    for(int i = 1; i <= limit; i++) {
-        bool can_continue = check_position(board, player, position, {-i, 0}, it);
-
-        if(!can_continue) break;
-    }
-
-    for(int i = 1; i <= limit; i++) {
-        bool can_continue = check_position(board, player, position, {0, i}, it);
-
-        if(!can_continue) break;
-    }
-
-    for(int i = 1; i <= limit; i++) {
-        bool can_continue = check_position(board, player, position, {0, -i}, it);
-
-        if(!can_continue) break;
+            if(!can_continue) break;
+        }
     }
 
     return moves;
