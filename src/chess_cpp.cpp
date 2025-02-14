@@ -67,6 +67,20 @@ bool check_position(const board_state& board, player player, board_position posi
     return can_continue;
 }
 
+// Writes 4 chess_move instances, one for each possible promotion target, to it
+void get_promotion_moves(board_position start_position, board_position target_position, std::back_insert_iterator<std::vector<chess_move>> it) {
+    piece_type promotion_targets[] = {piece_type::queen, piece_type::rook, piece_type::bishop, piece_type::knight};
+
+    for(auto promotion_target : promotion_targets) {
+        *it = {
+            .type = move_type::promotion,
+            .start_position = start_position,
+            .target_position = target_position,
+            .promotion_target = promotion_target
+        };
+    }
+}
+
 std::vector<chess_move> get_castle_moves(const board_state& board, board_position position) {
     // Can only castle if the rook is in the starting file
     if(position.file != 0 && position.file != 7) return {};
@@ -230,19 +244,34 @@ std::vector<chess_move> get_pawn_moves(const board_state& board, board_position 
 
     auto it = std::back_inserter(moves);
 
+    // Whether the move in question is a pawn promotion
+    bool is_promotion = (position.rank == 6 && player == player::white) || (position.rank == 1 && player == player::black);
+
     // Moving 2 spaces is only allowed if the pawn is at its starting position
     bool double_move_allowed = (position.rank == 1 && player == player::white) || (position.rank == 6 && player == player::black);
 
     int offset_multiplier = player == player::white ? 1 : -1;  // Used to change the direction of the move if it is black's move
 
-    for(int i = 1; i <= 2; i++) {
-        board_offset offset = {
-            .rank_offset = i * offset_multiplier
+    if(is_promotion) {
+        board_position target_position = {
+            // position.rank + offset_multiplier can only be 0 or 7 here, so this cast is always safe
+            .rank = static_cast<std::uint8_t>(position.rank + offset_multiplier),
+            .file = position.file
         };
 
-        bool can_continue = check_position(board, player, position, offset, it);
+        if(board.pieces[target_position.rank][target_position.file].type == piece_type::none) {
+            get_promotion_moves(position, target_position, it);
+        }
+    } else {
+        for(int i = 1; i <= 2; i++) {
+            board_offset offset = {
+                .rank_offset = i * offset_multiplier
+            };
 
-        if(!can_continue || !double_move_allowed) break;
+            bool can_continue = check_position(board, player, position, offset, it);
+
+            if(!can_continue || !double_move_allowed) break;
+        }
     }
 
     board_offset capture_offsets[] = {
@@ -264,7 +293,7 @@ std::vector<chess_move> get_pawn_moves(const board_state& board, board_position 
 
         if(board.pieces[rank][file].player != player) {
             moves.push_back({
-                .type = move_type::capture,
+                .type = is_promotion ? move_type::promotion : move_type::capture,
                 .start_position = position,
                 .target_position = *target_position
             });
