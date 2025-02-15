@@ -7,8 +7,15 @@
 #include <stdexcept>
 #include <iterator>
 #include <optional>
+#include <new>
 
 namespace chess {
+
+// An invalid board state should not be possible to create without manually editing the board state
+class invalid_board_state_error : public std::logic_error {
+public:
+    using std::logic_error::logic_error;
+};
 
 struct board_offset {
     int rank_offset;
@@ -348,7 +355,7 @@ std::vector<chess_move> get_moves_for_piece_type(const board_state& board, piece
     }
 }
 
-board_state board_state::initial_board_state() {
+board_state board_state::initial_board_state() noexcept {
     board_state board = {};
 
     for(bool& b : board.can_castle) {
@@ -379,27 +386,18 @@ board_state board_state::initial_board_state() {
     return board;
 }
 
-
-
-namespace python {
-void* init_ai_state() {
-    return new chess_ai_state{};
-}
-
-void free_ai_state(void* state) {
-    delete static_cast<chess_ai_state*>(state);
-}
-
-chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) {
+std::vector<chess_move> get_valid_moves(const board_state& board_state) {
     std::vector<chess_move> valid_moves = {};
 
     for(std::uint8_t rank = 0; rank < 8; rank++) {
         for(std::uint8_t file = 0; file < 8; file++) {
             auto piece = board_state.pieces[rank][file];
+
             board_position position = {
                 .rank = rank,
                 .file = file
             };
+
             if(piece.type != piece_type::none && board_state.pieces[rank][file].piece_player == board_state.current_player) {
                 auto moves = get_moves_for_piece_type(board_state, piece, position);
 
@@ -408,28 +406,52 @@ chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) {
         }
     }
 
+    return valid_moves;
+}
+
+
+
+namespace python {
+void* init_ai_state() noexcept {
+    return new(std::nothrow) chess_ai_state{};
+}
+
+void free_ai_state(void* state) noexcept {
+    delete static_cast<chess_ai_state*>(state);
+}
+
+chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) noexcept {
+    std::vector<chess_move> valid_moves;
+
+    try {
+        valid_moves = get_valid_moves(board_state);
+    } catch(...) {
+        // TODO: Return error to Python somehow
+        return nullptr;
+    }
+
     *num_moves = valid_moves.size();
 
-    auto* result = new chess_move[valid_moves.size()];
+    auto* result = new(std::nothrow) chess_move[valid_moves.size()];
 
-    std::ranges::copy(valid_moves, result);
+    if(result) std::ranges::copy(valid_moves, result);
 
     return result;
 }
 
-void free_moves(chess_move* moves) {
+void free_moves(chess_move* moves) noexcept {
     delete[] moves;
 }
 
-void apply_move(board_state* board_state, chess_move move) {
+void apply_move(board_state* board_state, chess_move move) noexcept {
     // TODO: Implement
 }
 
-void ai_move(board_state* board_state, std::int32_t difficulty) {
+void ai_move(board_state* board_state, std::int32_t difficulty) noexcept {
     // TODO: Implement
 }
 
-board_state get_initial_board_state() {
+board_state get_initial_board_state() noexcept {
     return board_state::initial_board_state();
 }
 }
