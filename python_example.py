@@ -19,7 +19,7 @@ class ChessMove(Structure):
         return f"{type_str_arr[self.type]}: {self.start_position} -> {self.target_position}"
 
 class Piece(Structure):
-    _fields_ = [("piece_type", c_int), ("player", c_int)]
+    _fields_ = [("piece_type", c_int), ("piece_player", c_int)]
 
 class BoardState(Structure):
     _fields_ = [("pieces", (Piece * 8) * 8), ("can_castle", c_bool * 2), ("in_check", c_bool * 2), ("en_passant_valid", c_bool * 16), ("turns_since_last_capture_or_pawn", c_int), ("current_player", c_int), ("status", c_int)]

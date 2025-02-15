@@ -49,7 +49,7 @@ bool check_position(const board_state& board, player player, board_position posi
 
     if(board.pieces[rank][file].type != piece_type::none) {
         // Encountered one of our own pieces, cannot move further
-        if(board.pieces[rank][file].player == player) return false;
+        if(board.pieces[rank][file].piece_player == player) return false;
 
         // Encountered an enemy piece
         // We can capture it, but cannot move past it
@@ -69,7 +69,7 @@ bool check_position(const board_state& board, player player, board_position posi
 
 // Checks if the pawn at start_position can perform any en passant captures, and writes them to it
 void get_en_passant_moves(const board_state& board, board_position start_position, std::back_insert_iterator<std::vector<chess_move>> it) {
-    auto player = board.pieces[start_position.rank][start_position.file].player;
+    auto player = board.pieces[start_position.rank][start_position.file].piece_player;
 
     // Check if pawn is on the correct rank to perform an en passant capture
     if(start_position.rank != (player == player::white ? 4 : 3)) return;
@@ -118,7 +118,7 @@ std::vector<chess_move> get_castle_moves(const board_state& board, board_positio
     // Can only castle if the rook is in the starting file
     if(position.file != 0 && position.file != 7) return {};
 
-    auto player = board.pieces[position.rank][position.file].player;
+    auto player = board.pieces[position.rank][position.file].piece_player;
 
     bool kingside = position.file != 0;
 
@@ -159,7 +159,7 @@ std::vector<chess_move> get_castle_moves(const board_state& board, board_positio
 std::vector<chess_move> get_rook_moves(const board_state& board, board_position position, std::size_t limit = 7) {
     std::vector<chess_move> moves;
 
-    auto player = board.pieces[position.rank][position.file].player;
+    auto player = board.pieces[position.rank][position.file].piece_player;
 
     auto it = std::back_inserter(moves);
 
@@ -179,7 +179,7 @@ std::vector<chess_move> get_rook_moves(const board_state& board, board_position 
 std::vector<chess_move> get_bishop_moves(const board_state& board, board_position position, std::size_t limit = 7) {
     std::vector<chess_move> moves;
 
-    auto player = board.pieces[position.rank][position.file].player;
+    auto player = board.pieces[position.rank][position.file].piece_player;
 
     auto it = std::back_inserter(moves);
 
@@ -199,7 +199,7 @@ std::vector<chess_move> get_bishop_moves(const board_state& board, board_positio
 std::vector<chess_move> get_knight_moves(const board_state& board, board_position position) {
     std::vector<chess_move> moves;
 
-    auto player = board.pieces[position.rank][position.file].player;
+    auto player = board.pieces[position.rank][position.file].piece_player;
 
     board_offset offsets[] = {
         {1, 2},
@@ -225,7 +225,7 @@ std::vector<chess_move> get_knight_moves(const board_state& board, board_positio
 
         if(target_piece.type == piece_type::none) {
             type = move_type::normal_move;
-        } else if(target_piece.player != player) {
+        } else if(target_piece.piece_player != player) {
             type = move_type::capture;
         } else {
             continue;
@@ -245,7 +245,7 @@ std::vector<chess_move> get_knight_moves(const board_state& board, board_positio
 std::vector<chess_move> get_pawn_moves(const board_state& board, board_position position) {
     std::vector<chess_move> moves;
 
-    auto player = board.pieces[position.rank][position.file].player;
+    auto player = board.pieces[position.rank][position.file].piece_player;
 
     auto it = std::back_inserter(moves);
 
@@ -296,7 +296,7 @@ std::vector<chess_move> get_pawn_moves(const board_state& board, board_position 
 
         auto [rank, file] = *target_position;
 
-        if(board.pieces[rank][file].type != piece_type::none && board.pieces[rank][file].player != player) {
+        if(board.pieces[rank][file].type != piece_type::none && board.pieces[rank][file].piece_player != player) {
             moves.push_back({
                 .type = is_promotion ? move_type::promotion : move_type::capture,
                 .start_position = position,
@@ -400,7 +400,7 @@ chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) {
                 .rank = rank,
                 .file = file
             };
-            if(piece.type != piece_type::none && board_state.pieces[rank][file].player == board_state.current_player) {
+            if(piece.type != piece_type::none && board_state.pieces[rank][file].piece_player == board_state.current_player) {
                 auto moves = get_moves_for_piece_type(board_state, piece, position);
 
                 std::ranges::copy(moves, std::back_inserter(valid_moves));

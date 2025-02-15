@@ -43,7 +43,7 @@ struct board_position {
 struct piece {
     piece_type type;
 
-    player player;
+    player piece_player;
 };
 
 struct chess_move {
