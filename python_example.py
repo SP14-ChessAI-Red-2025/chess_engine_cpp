@@ -13,8 +13,8 @@ class ChessMove(Structure):
     _fields_ = [("type", c_int), ("start_position", BoardPosition), ("target_position", BoardPosition), ("promotion_target", c_int)]
 
     def __str__(self) -> str:
-        # TODO: customize output for castling and promotion
-        type_str_arr = ["Move", "Capture", "En passant", "Castle", "Promotion"]
+        # TODO: customize output for castling, promotion resignation, and claiming a draw
+        type_str_arr = ["Move", "Capture", "En passant", "Castle", "Promotion", "Claim draw", "Resign"]
 
         return f"{type_str_arr[self.type]}: {self.start_position} -> {self.target_position}"
 
@@ -22,7 +22,7 @@ class Piece(Structure):
     _fields_ = [("piece_type", c_int), ("piece_player", c_int)]
 
 class BoardState(Structure):
-    _fields_ = [("pieces", (Piece * 8) * 8), ("can_castle", c_bool * 2), ("in_check", c_bool * 2), ("en_passant_valid", c_bool * 16), ("turns_since_last_capture_or_pawn", c_int), ("current_player", c_int), ("status", c_int)]
+    _fields_ = [("pieces", (Piece * 8) * 8), ("can_castle", c_bool * 2), ("in_check", c_bool * 2), ("en_passant_valid", c_bool * 16), ("turns_since_last_capture_or_pawn", c_int), ("current_player", c_int), ("status", c_int), ("can_claim_draw", c_bool)]
 
 class ChessAIState(Structure):
     pass
@@ -79,10 +79,11 @@ def main():
 
     valid_moves = get_valid_moves(board_state, byref(size))
 
-    valid_moves_array = (ChessMove * size.value).from_address(addressof(valid_moves.contents))
+    valid_moves_array = [] if size.value == 0 else (ChessMove * size.value).from_address(addressof(valid_moves.contents))
 
     ai_state = init_ai_state()
 
+    print(f"{len(valid_moves_array)} moves found")
 
     for move in valid_moves_array:
         print(move_to_str(move, board_state))

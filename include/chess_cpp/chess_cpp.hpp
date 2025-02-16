@@ -26,13 +26,16 @@ enum class move_type : int {
     capture = 1,
     en_passant = 2,
     castle = 3,
-    promotion = 4
+    promotion = 4,
+    claim_draw = 5, // Used to claim a draw under the 50 move rule
+    resign = 6
 };
 
 enum class game_status : int {
     normal = 0,
     draw = 1,
-    checkmate = 2
+    checkmate = 2,
+    resigned = 3
 };
 
 struct board_position {
@@ -87,7 +90,10 @@ struct board_state {
     player current_player;
 
     // Status of the game: normal, a draw, or a checkmate
+    // If status == checkmate or status == resigned, then current_player is the loser
     game_status status;
+
+    bool can_claim_draw;
 
     static board_state initial_board_state() noexcept;
 };
