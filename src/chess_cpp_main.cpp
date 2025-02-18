@@ -5,7 +5,7 @@
 
 
 int main() {
-    auto board = chess::board_state::initial_board_state();
+    auto board = chess::python::get_initial_board_state();
 
     std::size_t num_moves = 0;
 
