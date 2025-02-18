@@ -400,8 +400,8 @@ board_state board_state::initial_board_state() noexcept {
 }
 
 std::optional<board_position> get_king_position(const board_state& board, player player) {
-    for(std::uint8_t rank = 0; rank < 7; rank++) {
-        for(std::uint8_t file = 0; file < 7; file++) {
+    for(std::uint8_t rank = 0; rank <= 7; rank++) {
+        for(std::uint8_t file = 0; file <= 7; file++) {
             auto& piece = board.pieces[rank][file];
 
             if(piece.type == piece_type::king && piece.piece_player == player) {
