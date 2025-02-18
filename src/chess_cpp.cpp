@@ -186,8 +186,10 @@ std::vector<chess_move> get_rook_moves(const board_state& board, board_position 
     board_offset offsets[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
     for(auto offset : offsets) {
-        for(int i = 1; i <= limit; i++) {
-            bool can_continue = check_position(board, player, position, {offset.rank_offset * i, offset.file_offset * i}, false, it);
+        for(std::size_t i = 1; i <= limit; i++) {
+            bool can_continue = check_position(
+                board, player, position,
+                {offset.rank_offset * static_cast<int>(i), offset.file_offset * static_cast<int>(i)}, false, it);
 
             if(!can_continue) break;
         }
@@ -206,8 +208,10 @@ std::vector<chess_move> get_bishop_moves(const board_state& board, board_positio
     board_offset offsets[] = {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
 
     for(auto offset : offsets) {
-        for(int i = 1; i <= limit; i++) {
-            bool can_continue = check_position(board, player, position, {i * offset.rank_offset, i * offset.file_offset}, false, it);
+        for(std::size_t i = 1; i <= limit; i++) {
+            bool can_continue = check_position(
+                board, player, position,
+                {static_cast<int>(i) * offset.rank_offset, static_cast<int>(i) * offset.file_offset}, false, it);
 
             if(!can_continue) break;
         }
@@ -704,7 +708,7 @@ void apply_move(board_state* board_state, chess_move move) noexcept {
     }
 }
 
-void ai_move(board_state* board_state, std::int32_t difficulty) noexcept {
+void ai_move([[maybe_unused]] board_state* board_state, [[maybe_unused]] std::int32_t difficulty) noexcept {
     // TODO: Implement
 }
 
