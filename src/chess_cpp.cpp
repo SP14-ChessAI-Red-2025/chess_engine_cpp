@@ -639,8 +639,12 @@ std::vector<chess_move> get_valid_moves(const board_state& board_state) {
 
 void update_status(board_state& board) {
     // get_valid_moves always returns at least 1 move of type move_type::resign
-    if(is_player_in_check(board, board.current_player) && get_valid_moves(board).size() == 1) {
-        board.status = game_status::checkmate;
+    if(get_valid_moves(board).size() == 1) {
+        if(is_player_in_check(board, board.current_player)) {
+            board.status = game_status::checkmate;
+        } else {
+            board.status = game_status::draw;
+        }
 
         return;
     }
