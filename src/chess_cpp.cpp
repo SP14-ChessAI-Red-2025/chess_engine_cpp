@@ -46,7 +46,7 @@ std::optional<board_position> apply_offset(board_position position, board_offset
         }};
     }
 
-    return std::nullopt;
+    return {};
 }
 
 // Checks if the position determined by position + offset is in bounds
@@ -360,7 +360,7 @@ std::vector<chess_move> get_moves_for_piece_type(const board_state& board, piece
     }
     default:
         // Invalid piece type
-        throw std::invalid_argument{"Invalid piece type"};
+        throw invalid_board_state_error{"Invalid piece type"};
     }
 }
 
