@@ -51,8 +51,9 @@ std::optional<board_position> apply_offset(board_position position, board_offset
 
 // Checks if the position determined by position + offset is in bounds
 // If it is, writes the move to the iterator it
+// is_pawn_move is true if the piece being moved is a pawn
 // Returns true if the target position is empty, otherwise returns false
-bool check_position(const board_state& board, player player, board_position position, board_offset offset, std::back_insert_iterator<std::vector<chess_move>> it) {
+bool check_position(const board_state& board, player player, board_position position, board_offset offset, bool is_pawn_move, std::back_insert_iterator<std::vector<chess_move>> it) {
     bool can_continue = true;
 
     auto target_position = apply_offset(position, offset);
@@ -66,6 +67,9 @@ bool check_position(const board_state& board, player player, board_position posi
     if(board.pieces[rank][file].type != piece_type::none) {
         // Encountered one of our own pieces, cannot move further
         if(board.pieces[rank][file].piece_player == player) return false;
+
+        // This function is only called for pawns when they are moving forward, but pawns cannot capture while moving forward
+        if(is_pawn_move) return false;
 
         // Encountered an enemy piece
         // We can capture it, but cannot move past it
@@ -183,7 +187,7 @@ std::vector<chess_move> get_rook_moves(const board_state& board, board_position 
 
     for(auto offset : offsets) {
         for(int i = 1; i <= limit; i++) {
-            bool can_continue = check_position(board, player, position, {offset.rank_offset * i, offset.file_offset * i}, it);
+            bool can_continue = check_position(board, player, position, {offset.rank_offset * i, offset.file_offset * i}, false, it);
 
             if(!can_continue) break;
         }
@@ -203,7 +207,7 @@ std::vector<chess_move> get_bishop_moves(const board_state& board, board_positio
 
     for(auto offset : offsets) {
         for(int i = 1; i <= limit; i++) {
-            bool can_continue = check_position(board, player, position, {i * offset.rank_offset, i * offset.file_offset}, it);
+            bool can_continue = check_position(board, player, position, {i * offset.rank_offset, i * offset.file_offset}, false, it);
 
             if(!can_continue) break;
         }
@@ -299,7 +303,7 @@ std::vector<chess_move> get_pawn_moves(const board_state& board, board_position 
                 .rank_offset = i * offset_multiplier
             };
 
-            bool can_continue = check_position(board, player, position, offset, it);
+            bool can_continue = check_position(board, player, position, offset, true, it);
 
             if(!can_continue || !double_move_allowed) break;
         }
