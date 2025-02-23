@@ -1,4 +1,8 @@
-add_library(chess_cpp SHARED chess_cpp.cpp ../include/chess_cpp/chess_cpp.hpp)
+add_library(chess_cpp SHARED
+        chess_rules.cpp ../include/chess_cpp/chess_rules.hpp
+        python_api.cpp ../include/chess_cpp/python_api.hpp
+        chess_ai.cpp ../include/chess_cpp/chess_ai.hpp
+)
 
 add_executable(chess_cpp_main chess_cpp_main.cpp)
 

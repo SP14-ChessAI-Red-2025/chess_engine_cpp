@@ -1,4 +1,4 @@
-#include <chess_cpp/chess_cpp.hpp>
+#include <chess_cpp/python_api.hpp>
 
 #include <iostream>
 #include <format>
