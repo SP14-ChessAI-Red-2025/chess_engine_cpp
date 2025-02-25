@@ -8,7 +8,7 @@ class BoardPosition(Structure):
     _fields_ = [("rank", c_uint8), ("file", c_uint8)]
 
     def __str__(self) -> str:
-        file_str = chr(ord("a") + self.file);
+        file_str = chr(ord("a") + self.file)
 
         return f"{file_str}{self.rank+1}"
 
@@ -24,16 +24,35 @@ class ChessMove(Structure):
 class Piece(Structure):
     _fields_ = [("piece_type", c_int), ("piece_player", c_int)]
 
-class BoardState(Structure):
+class BoardStateCType(Structure):
     _fields_ = [("pieces", (Piece * 8) * 8), ("can_castle", c_bool * 4), ("in_check", c_bool * 2), ("en_passant_valid", c_bool * 16), ("turns_since_last_capture_or_pawn", c_int), ("current_player", c_int), ("status", c_int), ("can_claim_draw", c_bool)]
 
+class BoardState:
+    board_state_impl: BoardStateCType
+
+    def __init__(self, board_state: BoardStateCType):
+        self.board_state_impl = board_state
+
+    @property
+    def pieces(self) -> (Piece * 8) * 8:
+        return self.board_state_impl.pieces
+
+    @property
+    def status(self) -> c_int:
+        return self.board_state_impl.status
+
+    @property
+    def current_player(self) -> c_int:
+        return self.board_state_impl.current_player
+
+
 class ChessEngine:
-    __get_initial_board_state: Callable[[], BoardState]
+    __get_initial_board_state: Callable[[], BoardStateCType]
 
     __get_valid_moves: Callable[[BoardState, POINTER(c_size_t)], POINTER(ChessMove)]
     __free_moves: Callable[[POINTER(ChessMove)], None]
 
-    __apply_move: Callable[[POINTER(BoardState), ChessMove], None]
+    __apply_move: Callable[[POINTER(BoardStateCType), ChessMove], None]
 
     __free_ai_state: Callable[[c_void_p], None]
 
@@ -44,10 +63,10 @@ class ChessEngine:
         lib = CDLL(library_path)
 
         self.__get_initial_board_state = lib.get_initial_board_state
-        self.__get_initial_board_state.restype = BoardState
+        self.__get_initial_board_state.restype = BoardStateCType
 
         self.__get_valid_moves = lib.get_valid_moves
-        self.__get_valid_moves.argtypes = [BoardState, POINTER(c_size_t)]
+        self.__get_valid_moves.argtypes = [BoardStateCType, POINTER(c_size_t)]
         self.__get_valid_moves.restype = POINTER(ChessMove)
 
 
@@ -58,7 +77,7 @@ class ChessEngine:
 
         self.__apply_move = lib.apply_move
 
-        self.__apply_move.argtypes = [POINTER(BoardState), ChessMove]
+        self.__apply_move.argtypes = [POINTER(BoardStateCType), ChessMove]
         self.__apply_move.restype = None
 
         init_ai_state = lib.init_ai_state
@@ -70,12 +89,12 @@ class ChessEngine:
 
         self.__ai_state = init_ai_state()
 
-        self.board_state = self.__get_initial_board_state()
+        self.board_state = BoardState(self.__get_initial_board_state())
 
     def get_valid_moves(self) -> list[ChessMove]:
         size = c_size_t()
 
-        valid_moves_ptr = self.__get_valid_moves(self.board_state, byref(size))
+        valid_moves_ptr = self.__get_valid_moves(self.board_state.board_state_impl, byref(size))
 
         if size.value == 0:
             self.__free_moves(valid_moves_ptr)
@@ -96,7 +115,7 @@ class ChessEngine:
             return valid_moves
 
     def apply_move(self, move: ChessMove) -> None:
-        self.__apply_move(byref(self.board_state), move)
+        self.__apply_move(byref(self.board_state.board_state_impl), move)
 
     def ai_move(self, difficulty: int) -> None:
         raise NotImplementedError()
