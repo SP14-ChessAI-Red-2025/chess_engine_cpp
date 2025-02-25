@@ -3,6 +3,7 @@
 #include "chess_ai.hpp"
 
 #include <new>
+#include <algorithm>
 
 namespace chess::python {
 
