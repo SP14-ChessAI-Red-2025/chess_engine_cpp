@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <ranges>
 
 // Check that the possible first moves are correctly calculated
 TEST(ChessRules, FirstMoveTest) {
@@ -60,6 +61,53 @@ TEST(ChessRules, FirstMoveTest) {
     };
 
     ASSERT_NE(std::ranges::find(valid_moves, move), valid_moves.end());
+}
+
+void apply_moves(const std::ranges::range auto& indices, chess::board_state& board_state) {
+    auto valid_moves = get_valid_moves(board_state);
+
+    for(auto i : indices) {
+        board_state = apply_move(board_state, valid_moves[i]);
+        update_status(board_state);
+
+        valid_moves = get_valid_moves(board_state);
+    }
+
+}
+
+// Test that a fool's mate is properly detected
+TEST(ChessRules, FoolsMateTest) {
+    std::size_t indices[] = {14, 8, 15, 20};
+
+    auto board_state = chess::board_state::initial_board_state();
+
+    apply_moves(indices, board_state);
+
+    ASSERT_EQ(board_state.status, chess::game_status::checkmate);
+    ASSERT_EQ(board_state.current_player, chess::player::white);
+}
+
+// Test that draws are properly detected
+TEST(ChessRules, DrawTest) {
+    std::size_t indices[] = {
+        12, 1,
+        5, 13,
+        43, 23,
+        28, 13,
+        25, 14,
+        41, 3,
+        43, 24,
+        29, 3,
+        39, 4,
+        28
+    };
+
+    auto board_state = chess::board_state::initial_board_state();
+
+    apply_moves(indices, board_state);
+
+    ASSERT_EQ(board_state.status, chess::game_status::draw);
+    ASSERT_EQ(board_state.current_player, chess::player::black);
 }
 
 
