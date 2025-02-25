@@ -12,7 +12,7 @@ def main():
 
     with ChessEngine(library_path) as chess_engine:
         while True:
-            valid_moves = chess_engine.get_valid_moves(chess_engine.board_state)
+            valid_moves = chess_engine.get_valid_moves()
 
             print(f"{len(valid_moves)} moves found")
 
