@@ -41,6 +41,8 @@ enum class game_status : int {
 struct board_position {
     std::uint8_t rank;
     std::uint8_t file;
+
+    bool operator==(const board_position& rhs) const = default;
 };
 
 struct piece {
@@ -61,6 +63,8 @@ struct chess_move {
 
     // Only meaningful if type == promotion
     piece_type promotion_target;
+
+    bool operator==(const chess_move& rhs) const = default;
 };
 
 struct board_state {
