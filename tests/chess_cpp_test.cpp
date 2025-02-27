@@ -19,9 +19,9 @@ TEST(ChessRules, FirstMoveTest) {
     for(std::uint8_t file = 0; file < 8; file++) {
         for(std::uint8_t target_rank = 2; target_rank <= 3; target_rank++) {
             chess::chess_move move = {
+                .type = chess::move_type::normal_move,
                 .start_position = {1, file},
-                .target_position = {target_rank, file},
-                .type = chess::move_type::normal_move
+                .target_position = {target_rank, file}
             };
 
             ASSERT_NE(std::ranges::find(valid_moves, move), valid_moves.end());
@@ -31,33 +31,33 @@ TEST(ChessRules, FirstMoveTest) {
     // Test that all valid knight moves are produced
 
     chess::chess_move move = {
+        .type = chess::move_type::normal_move,
         .start_position = {0, 1},
-        .target_position = {2, 0},
-        .type = chess::move_type::normal_move
+        .target_position = {2, 0}
     };
 
     ASSERT_NE(std::ranges::find(valid_moves, move), valid_moves.end());
 
     move = {
+        .type = chess::move_type::normal_move,
         .start_position = {0, 1},
-        .target_position = {2, 2},
-        .type = chess::move_type::normal_move
+        .target_position = {2, 2}
     };
 
     ASSERT_NE(std::ranges::find(valid_moves, move), valid_moves.end());
 
     move = {
+        .type = chess::move_type::normal_move,
         .start_position = {0, 6},
-        .target_position = {2, 5},
-        .type = chess::move_type::normal_move
+        .target_position = {2, 5}
     };
 
     ASSERT_NE(std::ranges::find(valid_moves, move), valid_moves.end());
 
     move = {
+        .type = chess::move_type::normal_move,
         .start_position = {0, 6},
-        .target_position = {2, 7},
-        .type = chess::move_type::normal_move
+        .target_position = {2, 7}
     };
 
     ASSERT_NE(std::ranges::find(valid_moves, move), valid_moves.end());

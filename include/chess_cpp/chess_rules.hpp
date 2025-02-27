@@ -5,6 +5,12 @@
 
 #include <vector>
 
+#ifdef _MSC_VER
+#define DLLEXPORT __declspec(dllexport)
+#else
+#define DLLEXPORT
+#endif
+
 namespace chess {
 enum class piece_type : int {
     none = 0, // Used to indicate that a square is empty
@@ -99,13 +105,13 @@ struct board_state {
 
     bool can_claim_draw;
 
-    static board_state initial_board_state() noexcept;
+    DLLEXPORT static board_state initial_board_state() noexcept;
 };
 
 
-std::vector<chess_move> get_valid_moves(const board_state& board_state);
+DLLEXPORT std::vector<chess_move> get_valid_moves(const board_state& board_state);
 
-board_state apply_move(board_state board, chess_move move);
+DLLEXPORT board_state apply_move(board_state board, chess_move move);
 
-void update_status(board_state& board);
+DLLEXPORT void update_status(board_state& board);
 }
