@@ -60,6 +60,7 @@ struct piece {
 struct chess_move {
     move_type type;
 
+    // if type == castle, this refers to the location of the rook
     board_position start_position;
 
     // Meaningless if type == castle
