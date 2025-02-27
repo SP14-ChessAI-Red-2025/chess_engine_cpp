@@ -55,6 +55,8 @@ struct piece {
     piece_type type;
 
     player piece_player;
+
+    bool operator==(const piece& rhs) const = default;
 };
 
 struct chess_move {
