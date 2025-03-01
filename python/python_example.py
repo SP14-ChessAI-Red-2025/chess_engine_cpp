@@ -3,6 +3,22 @@ import sys
 from chess import *
 
 
+piece_strings = [["♙", "♘", "♗", "♖", "♕", "♔"], ["♟", "♞", "♝", "♜", "♛", "♚"]]
+
+def print_board(board: BoardState) -> None:
+    board_str = ""
+    for rank in board.pieces[::-1]:
+        for piece in rank:
+            if piece.piece_type == 0:
+                board_str += ' '
+            elif 0 < piece.piece_type <= 6:
+                board_str += piece_strings[piece.piece_player][piece.piece_type - 1]
+            else:
+                board_str += '?'
+        board_str += '\n'
+
+    print(board_str)
+
 def main() -> None:
     if len(sys.argv) < 2:
         print("Must specify library path on the command line")
@@ -12,6 +28,8 @@ def main() -> None:
 
     with ChessEngine(library_path) as chess_engine:
         while True:
+            print_board(chess_engine.board_state)
+
             valid_moves = chess_engine.get_valid_moves()
 
             print(f"{len(valid_moves)} moves found")
