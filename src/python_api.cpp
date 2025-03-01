@@ -47,8 +47,12 @@ void apply_move(board_state* board_state, chess_move move) noexcept {
     }
 }
 
-void ai_move([[maybe_unused]] ai::chess_ai_state* ai_state, [[maybe_unused]] board_state* board_state, [[maybe_unused]] std::int32_t difficulty) noexcept {
-    // TODO: Implement
+void ai_move(ai::chess_ai_state* ai_state, board_state* board_state, std::int32_t difficulty) noexcept {
+    try {
+        ai_state->make_move(*board_state, difficulty);
+    } catch(...) {
+        // TODO: Return error to Python somehow
+    }
 }
 
 board_state get_initial_board_state() noexcept {

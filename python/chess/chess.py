@@ -53,6 +53,7 @@ class ChessEngine:
     __free_moves: Callable[[POINTER(ChessMove)], None]
 
     __apply_move: Callable[[POINTER(BoardStateCType), ChessMove], None]
+    __ai_move: Callable[[c_void_p, POINTER(BoardStateCType), c_int32], None]
 
     __free_ai_state: Callable[[c_void_p], None]
 
@@ -87,6 +88,10 @@ class ChessEngine:
         self.__free_ai_state.argtypes = [c_void_p]
         self.__free_ai_state.restype = None
 
+        self.__ai_move = lib.ai_move
+        self.__ai_move.argtypes = [c_void_p, POINTER(BoardStateCType), c_int32]
+        self.__ai_move.restype = None
+
         self.__ai_state = init_ai_state()
 
         self.board_state = BoardState(self.__get_initial_board_state())
@@ -118,7 +123,7 @@ class ChessEngine:
         self.__apply_move(byref(self.board_state.board_state_impl), move)
 
     def ai_move(self, difficulty: int) -> None:
-        raise NotImplementedError()
+        self.__ai_move(self.__ai_state, self.board_state.board_state_impl, difficulty)
 
     def move_to_str(self, move: ChessMove) -> str:
         piece_type = self.board_state.pieces[move.start_position.rank][move.start_position.file].piece_type
