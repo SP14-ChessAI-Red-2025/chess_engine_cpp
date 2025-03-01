@@ -47,7 +47,7 @@ void apply_move(board_state* board_state, chess_move move) noexcept {
     }
 }
 
-void ai_move([[maybe_unused]] board_state* board_state, [[maybe_unused]] std::int32_t difficulty) noexcept {
+void ai_move([[maybe_unused]] ai::chess_ai_state* ai_state, [[maybe_unused]] board_state* board_state, [[maybe_unused]] std::int32_t difficulty) noexcept {
     // TODO: Implement
 }
 

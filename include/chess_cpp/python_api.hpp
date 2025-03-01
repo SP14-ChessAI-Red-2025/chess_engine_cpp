@@ -1,6 +1,7 @@
 #pragma once
 
 #include "chess_rules.hpp"
+#include "chess_ai.hpp"
 
 #ifdef _MSC_VER
 #define DLLEXPORT __declspec(dllexport)
@@ -33,7 +34,7 @@ extern "C" DLLEXPORT void free_moves(chess_move* moves) noexcept;
 extern "C" DLLEXPORT void apply_move(board_state* board_state, chess_move move) noexcept;
 
 // Have the AI make a move
-extern "C" DLLEXPORT void ai_move(board_state* board_state, std::int32_t difficulty) noexcept;
+extern "C" DLLEXPORT void ai_move(ai::chess_ai_state* ai_state, board_state* board_state, std::int32_t difficulty) noexcept;
 
 // Get a board_state representing a game that has not yet started
 extern "C" DLLEXPORT board_state get_initial_board_state() noexcept;
