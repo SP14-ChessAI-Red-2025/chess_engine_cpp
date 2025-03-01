@@ -2,7 +2,7 @@ from ctypes import *
 
 from collections.abc import Callable
 
-from typing import Self
+from typing import Any, Self
 
 class BoardPosition(Structure):
     _fields_ = [("rank", c_uint8), ("file", c_uint8)]
@@ -34,26 +34,28 @@ class BoardState:
         self.board_state_impl = board_state
 
     @property
-    def pieces(self) -> (Piece * 8) * 8:
+    def pieces(self) -> Any: # I don't know how to use ctypes arrays with type hints
         return self.board_state_impl.pieces
 
     @property
-    def status(self) -> c_int:
+    def status(self) -> int:
         return self.board_state_impl.status
 
     @property
-    def current_player(self) -> c_int:
+    def current_player(self) -> int:
         return self.board_state_impl.current_player
 
 
 class ChessEngine:
+    # I don't know the proper way to use type hints with ctypes functions, so I use Any here
+
     __get_initial_board_state: Callable[[], BoardStateCType]
 
-    __get_valid_moves: Callable[[BoardState, POINTER(c_size_t)], POINTER(ChessMove)]
-    __free_moves: Callable[[POINTER(ChessMove)], None]
+    __get_valid_moves: Callable[[BoardStateCType, Any], Any]
+    __free_moves: Callable[[Any], None]
 
-    __apply_move: Callable[[POINTER(BoardStateCType), ChessMove], None]
-    __ai_move: Callable[[c_void_p, POINTER(BoardStateCType), c_int32], None]
+    __apply_move: Callable[[Any, ChessMove], None]
+    __ai_move: Callable[[c_void_p, Any, int], None]
 
     __free_ai_state: Callable[[c_void_p], None]
 

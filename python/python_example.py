@@ -3,7 +3,7 @@ import sys
 from chess import *
 
 
-def main():
+def main() -> None:
     if len(sys.argv) < 2:
         print("Must specify library path on the command line")
         return
