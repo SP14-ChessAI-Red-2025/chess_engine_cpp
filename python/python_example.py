@@ -1,6 +1,6 @@
 import sys
 
-from python.chess import *
+from chess import *
 
 
 def main():
