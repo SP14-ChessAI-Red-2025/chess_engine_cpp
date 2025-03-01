@@ -37,8 +37,6 @@ def main() -> None:
             for idx, move in enumerate(valid_moves):
                 print(f"{idx+1}: {chess_engine.move_to_str(move)}")
 
-            # print("Enter move number")
-
             move_number = int(input("Enter move number: "))
 
             move = valid_moves[move_number - 1]
