@@ -68,7 +68,6 @@ void apply_moves(const std::ranges::range auto& indices, chess::board_state& boa
 
     for(auto i : indices) {
         board_state = apply_move(board_state, valid_moves[i]);
-        update_status(board_state);
 
         valid_moves = get_valid_moves(board_state);
     }

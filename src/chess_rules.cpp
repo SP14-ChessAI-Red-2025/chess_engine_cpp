@@ -482,7 +482,8 @@ bool is_player_in_check(board_state board, player player) {
     return !threatening_moves.empty();
 }
 
-board_state apply_move(board_state board, chess_move move) {
+// Applies the move, but doesn't update the game status
+board_state apply_move_impl(board_state board, chess_move move) {
     bool is_capture_or_pawn_move = false;
 
     auto piece = board.pieces[move.start_position.rank][move.start_position.file];
@@ -600,7 +601,7 @@ board_state apply_move(board_state board, chess_move move) {
 bool puts_player_in_check(board_state board, chess_move move) {
     auto player = board.pieces[move.start_position.rank][move.start_position.file].piece_player;
 
-    board = apply_move(board, move);
+    board = apply_move_impl(board, move);
 
     return is_player_in_check(board, player);
 }
@@ -662,5 +663,13 @@ void update_status(board_state& board) {
     }
 
     // TODO: Support threefold repetition rule
+}
+
+board_state apply_move(board_state board, chess_move move) {
+    board = apply_move_impl(board, move);
+
+    update_status(board);
+
+    return board;
 }
 }

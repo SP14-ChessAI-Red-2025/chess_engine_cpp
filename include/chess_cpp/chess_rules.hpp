@@ -115,6 +115,4 @@ struct board_state {
 DLLEXPORT std::vector<chess_move> get_valid_moves(const board_state& board_state);
 
 DLLEXPORT board_state apply_move(board_state board, chess_move move);
-
-DLLEXPORT void update_status(board_state& board);
 }

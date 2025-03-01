@@ -41,7 +41,6 @@ void free_moves(chess_move* moves) noexcept {
 void apply_move(board_state* board_state, chess_move move) noexcept {
     try {
         *board_state = apply_move(*board_state, move);
-        update_status(*board_state);
     } catch(...) {
         // TODO: Return error to Python somehow
     }
