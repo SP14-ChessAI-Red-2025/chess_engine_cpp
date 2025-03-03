@@ -27,23 +27,28 @@ def main() -> None:
     library_path = sys.argv[1]
 
     with ChessEngine(library_path) as chess_engine:
+        players_turn = True
+
         while True:
             print_board(chess_engine.board_state)
 
-            valid_moves = chess_engine.get_valid_moves()
+            if players_turn:
+                valid_moves = chess_engine.get_valid_moves()
 
-            print(f"{len(valid_moves)} moves found")
+                print(f"{len(valid_moves)} moves found")
 
-            for idx, move in enumerate(valid_moves):
-                print(f"{idx+1}: {chess_engine.move_to_str(move)}")
+                for idx, move in enumerate(valid_moves):
+                    print(f"{idx+1}: {chess_engine.move_to_str(move)}")
 
-            move_number = int(input("Enter move number: "))
+                move_number = int(input("Enter move number: "))
 
-            move = valid_moves[move_number - 1]
+                move = valid_moves[move_number - 1]
 
-            print(f"Applying move: {chess_engine.move_to_str(move)}")
+                print(f"Applying move: {chess_engine.move_to_str(move)}")
 
-            chess_engine.apply_move(move)
+                chess_engine.apply_move(move)
+            else:
+                chess_engine.ai_move(0)
 
             status = chess_engine.board_state.status
 
@@ -62,6 +67,8 @@ def main() -> None:
                 print(f"Game over: {winner_str} wins")
 
                 break
+
+            players_turn = not players_turn
 
 
 if __name__ == "__main__":
