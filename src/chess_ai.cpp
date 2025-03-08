@@ -6,6 +6,24 @@
 
 namespace chess::ai {
 
+struct game_tree {
+    board_state current_state;
+
+    std::vector<game_tree> children;
+
+    explicit game_tree(board_state current_state) : current_state{current_state} {}
+
+    void deepen(std::size_t depth) {
+        if(depth != 0) {
+            for(auto& move : get_valid_moves(current_state)) {
+                auto board = apply_move(current_state, move);
+
+                children.emplace_back(board).deepen(depth - 1);
+            }
+        }
+    }
+};
+
 std::int32_t rank_board(const board_state& board) {
     std::int32_t board_value = 0;
 
@@ -15,7 +33,7 @@ std::int32_t rank_board(const board_state& board) {
 
             using enum piece_type;
 
-            switch (piece.type) {
+            switch(piece.type) {
             case pawn:
                 piece_value = 1;
                 break;
@@ -45,11 +63,14 @@ std::int32_t rank_board(const board_state& board) {
 }
 
 void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
+    game_tree tree{board};
+
+    tree.deepen(1);
+
     auto valid_moves = get_valid_moves(board);
 
-    auto next_states = valid_moves | std::views::filter([](auto move) {
-        return move.type != move_type::resign;
-    }) | std::views::transform(std::bind_front(apply_move, board));
+    auto next_states = valid_moves | std::views::filter([](auto move) { return move.type != move_type::resign; }) |
+                       std::views::transform(std::bind_front(apply_move, board));
 
     std::int32_t max_score = 0;
     const board_state* best_board = nullptr;
@@ -69,4 +90,4 @@ void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
     board = *best_board;
 }
 
-}
+} // namespace chess::ai
