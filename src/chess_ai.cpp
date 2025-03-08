@@ -2,29 +2,20 @@
 
 #include <ranges>
 #include <functional>
+#include <algorithm>
+#include <optional>
 #include <cassert>
 
 namespace chess::ai {
 
-struct game_tree {
-    board_state current_state;
-
-    std::vector<game_tree> children;
-
-    explicit game_tree(board_state current_state) : current_state{current_state} {}
-
-    void deepen(std::size_t depth) {
-        if(depth != 0) {
-            for(auto& move : get_valid_moves(current_state)) {
-                auto board = apply_move(current_state, move);
-
-                children.emplace_back(board).deepen(depth - 1);
-            }
-        }
-    }
+// Whether the AI should consider the move
+// The AI currently ignores resignations and claiming draws
+bool should_consider_move(chess_move move) {
+    return move.type != move_type::resign && move.type != move_type::claim_draw;
 };
 
-std::int32_t rank_board(const board_state& board) {
+// A positive result is good for player, negative is bad for player
+std::int32_t rank_board(const board_state& board, player player) {
     std::int32_t board_value = 0;
 
     for(const auto& rank : board.pieces) {
@@ -53,8 +44,10 @@ std::int32_t rank_board(const board_state& board) {
                 break;
             }
 
-            if(piece.piece_player == board.current_player) {
+            if(piece.piece_player == player) {
                 board_value += piece_value;
+            } else {
+                board_value -= piece_value;
             }
         }
     }
@@ -62,32 +55,63 @@ std::int32_t rank_board(const board_state& board) {
     return board_value;
 }
 
-void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
-    game_tree tree{board};
+struct game_tree {
+    board_state current_state;
 
-    tree.deepen(1);
+    std::optional<chess_move> move; // The move that resulted in the current_state
 
-    auto valid_moves = get_valid_moves(board);
+    std::vector<game_tree> children;
 
-    auto next_states = valid_moves | std::views::filter([](auto move) { return move.type != move_type::resign; }) |
-                       std::views::transform(std::bind_front(apply_move, board));
+    void deepen(std::size_t depth) {
+        if(depth == 0) return;
 
-    std::int32_t max_score = 0;
-    const board_state* best_board = nullptr;
+        for(auto& move : get_valid_moves(current_state) | std::views::filter(should_consider_move)) {
+            auto board = apply_move(current_state, move);
 
-    for(const auto& next_state : next_states) {
-        std::int32_t score = rank_board(next_state);
-
-        if(score >= max_score) {
-            max_score = score;
-            best_board = &next_state;
+            children.emplace_back(board, move).deepen(depth - 1);
         }
     }
 
-    // Resignation is always a valid option, so this should never be null
-    assert(best_board != nullptr);
+    // Rank the current state according to the minimax algorithm
+    std::int32_t minimax(std::size_t depth, bool maximizing, player player) {
+        if(depth == 0 || children.empty()) {
+            return rank_board(current_state, player);
+        }
 
-    board = *best_board;
+        auto scores = children | std::views::transform([=](game_tree& child) {
+            return child.minimax(depth - 1, !maximizing, player);
+        });
+
+        if(maximizing) {
+            return *std::ranges::max_element(scores);
+        } else {
+            return *std::ranges::min_element(scores);
+        }
+    }
+
+    game_tree* get_best_move(std::size_t depth) {
+        assert(depth != 0);
+        assert(!children.empty());
+
+        auto children_with_scores = children | std::views::transform([=, this](game_tree& child) {
+            return std::make_pair(&child, child.minimax(depth - 1, false, this->current_state.current_player));
+        });
+
+        auto projection = &decltype(children_with_scores[0])::second;
+
+        return (*std::ranges::max_element(children_with_scores, {}, projection)).first;
+    }
+};
+
+void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
+    game_tree tree{board};
+
+    tree.deepen(3);
+
+    auto move = tree.get_best_move(3)->move;
+    assert(move.has_value());
+
+    board = apply_move(board, *move);
 }
 
 } // namespace chess::ai
