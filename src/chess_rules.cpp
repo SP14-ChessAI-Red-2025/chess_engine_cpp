@@ -330,11 +330,15 @@ std::vector<chess_move> get_pawn_moves(const board_state& board, board_position 
         auto [rank, file] = *target_position;
 
         if(board.pieces[rank][file].type != piece_type::none && board.pieces[rank][file].piece_player != player) {
-            moves.push_back({
-                .type = is_promotion ? move_type::promotion : move_type::capture,
-                .start_position = position,
-                .target_position = *target_position
-            });
+            if(is_promotion) {
+                get_promotion_moves(position, *target_position, it);
+            } else {
+                moves.push_back({
+                    .type = move_type::capture,
+                    .start_position = position,
+                    .target_position = *target_position
+                });
+            }
         }
     }
 
