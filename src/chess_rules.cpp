@@ -591,11 +591,7 @@ board_state apply_move_impl(board_state board, chess_move move) {
         board.turns_since_last_capture_or_pawn = 0;
         board.can_claim_draw = false;
     } else {
-        // A turn is finished when black makes their move
-        // We already toggled the player, however, so we need to compare with player::white
-        if(board.current_player == player::white) {
-            board.turns_since_last_capture_or_pawn++;
-        }
+        board.turns_since_last_capture_or_pawn++;
     }
 
     return board;
@@ -657,12 +653,13 @@ void update_status(board_state& board) {
         return;
     }
 
-    if(board.turns_since_last_capture_or_pawn >= 50) {
+    // 50 moves equals 100 turns
+    if(board.turns_since_last_capture_or_pawn >= 100) {
         board.can_claim_draw = true;
     }
 
-    // 75 move rule
-    if(board.turns_since_last_capture_or_pawn >= 75) {
+    // 75 moves equals 150 turns
+    if(board.turns_since_last_capture_or_pawn >= 150) {
         board.status = game_status::draw;
     }
 
