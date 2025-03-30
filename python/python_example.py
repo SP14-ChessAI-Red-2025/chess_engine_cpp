@@ -26,13 +26,18 @@ def main() -> None:
 
     library_path = sys.argv[1]
 
+    disable_ai = False
+
+    if len(sys.argv) >= 3:
+        disable_ai = sys.argv[2].lower() == "true"
+
     with ChessEngine(library_path) as chess_engine:
         players_turn = True
 
         while True:
             print_board(chess_engine.board_state)
 
-            if players_turn:
+            if players_turn or disable_ai:
                 valid_moves = chess_engine.get_valid_moves()
 
                 print(f"{len(valid_moves)} moves found")
