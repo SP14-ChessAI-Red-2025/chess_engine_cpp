@@ -533,6 +533,8 @@ board_state apply_move_impl(board_state board, chess_move move) {
                 if(move.start_position.rank == 6 && move.target_position.rank == 4) {
                     board.en_passant_valid[8 + move.start_position.file] = true;
                 }
+
+                is_capture_or_pawn_move = true;
             }
 
             break;
