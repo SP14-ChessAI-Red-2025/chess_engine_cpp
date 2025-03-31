@@ -432,6 +432,8 @@ board_state apply_move_impl(board_state board, chess_move move) {
                     int index = move.start_position.file + (piece_to_move.piece_player == player::white ? 0 : 8);
                     board.en_passant_valid[index] = true;
                 }
+
+                is_capture_or_pawn_move = true;
             }
             break;
         }
