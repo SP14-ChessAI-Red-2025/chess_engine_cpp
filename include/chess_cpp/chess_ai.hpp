@@ -5,7 +5,7 @@
 namespace chess::ai {
 
 struct chess_ai_state {
-    void make_move(board_state& board_state, std::int32_t difficulty);
+    void make_move(board_state& board, std::int32_t difficulty);
 };
 
 }
