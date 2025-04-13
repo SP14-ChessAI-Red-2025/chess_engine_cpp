@@ -1,6 +1,6 @@
 import sys
 
-from chess import *
+from chess_dir import *
 
 
 piece_strings = [["♙", "♘", "♗", "♖", "♕", "♔"], ["♟", "♞", "♝", "♜", "♛", "♚"]]
