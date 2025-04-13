@@ -58,9 +58,11 @@ std::int32_t rank_board(const board_state& board, player player) {
 struct game_tree {
     board_state current_state;
 
-    std::optional<chess_move> move; // The move that resulted in the current_state
+    player player; // The maximizing player
 
-    std::vector<game_tree> children;
+    std::optional<chess_move> move = {}; // The move that resulted in the current_state
+
+    std::vector<game_tree> children = {};
 
     void deepen(std::size_t depth) {
         if(depth == 0) return;
@@ -68,18 +70,18 @@ struct game_tree {
         for(auto& move : get_valid_moves(current_state) | std::views::filter(should_consider_move)) {
             auto board = apply_move(current_state, move);
 
-            children.emplace_back(board, move).deepen(depth - 1);
+            children.emplace_back(board, player, move).deepen(depth - 1);
         }
     }
 
     // Rank the current state according to the minimax algorithm
-    std::int32_t minimax(std::size_t depth, bool maximizing, player player) {
+    std::int32_t minimax(std::size_t depth, bool maximizing) {
         if(depth == 0 || children.empty()) {
             return rank_board(current_state, player);
         }
 
         auto scores = children | std::views::transform([=](game_tree& child) {
-            return child.minimax(depth - 1, !maximizing, player);
+            return child.minimax(depth - 1, !maximizing);
         });
 
         if(maximizing) {
@@ -93,8 +95,8 @@ struct game_tree {
         assert(depth != 0);
         assert(!children.empty());
 
-        auto children_with_scores = children | std::views::transform([=, this](game_tree& child) {
-            return std::make_pair(&child, child.minimax(depth - 1, false, this->current_state.current_player));
+        auto children_with_scores = children | std::views::transform([=](game_tree& child) {
+            return std::make_pair(&child, child.minimax(depth - 1, false));
         });
 
         auto projection = &decltype(children_with_scores[0])::second;
@@ -104,7 +106,7 @@ struct game_tree {
 };
 
 void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
-    game_tree tree{board};
+    game_tree tree{board, board.current_player};
 
     tree.deepen(3);
 
