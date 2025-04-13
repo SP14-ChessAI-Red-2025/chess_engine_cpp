@@ -1,6 +1,6 @@
 import sys
 
-from chess import *
+from chess_dir import *
 
 
 piece_strings = [["♙", "♘", "♗", "♖", "♕", "♔"], ["♟", "♞", "♝", "♜", "♛", "♚"]]
@@ -53,7 +53,10 @@ def main() -> None:
 
                 chess_engine.apply_move(move)
             else:
-                chess_engine.ai_move(0)
+                # AI not implemented in this older example wrapper
+                # chess_engine.ai_move(0)
+                print("AI move not implemented in this example's wrapper.")
+                break # Exit if it's AI's turn and not disabled
 
             status = chess_engine.board_state.status
 

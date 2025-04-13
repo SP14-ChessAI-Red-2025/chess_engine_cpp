@@ -1,42 +1,73 @@
 #pragma once
 
 #include "chess_rules.hpp"
-#include "chess_ai.hpp"
+// #include "chess_ai.hpp" // Consider if types from here are needed, or forward declare below
 
-#ifdef _MSC_VER
-#define DLLEXPORT __declspec(dllexport)
+#include <cstddef>
+#include <cstdint>
+
+// Forward declare AI state if possible to reduce header dependencies
+namespace chess::ai { struct chess_ai_state; }
+
+#ifdef _WIN32
+    #define DLLEXPORT __declspec(dllexport)
+#elif defined(__GNUC__) || defined(__clang__)
+    #define DLLEXPORT __attribute__((visibility("default")))
 #else
-#define DLLEXPORT
+    #define DLLEXPORT
+    #pragma warning DLLEXPORT is not defined for this platform
 #endif
 
-// Functions in this namespace will be called from Python
+// Functions in this namespace will be called from Python (likely via ctypes)
 namespace chess::python {
 
-// Initialize any long lived state used by the AI
-extern "C" DLLEXPORT void* init_ai_state() noexcept;
-// Free any resources associated with state
-extern "C" DLLEXPORT void free_ai_state(void* state) noexcept;
+    /**
+     * @brief Initialize the AI state, loading the NNUE model.
+     * @param model_path Path to the .onnx model file.
+     * @return Opaque pointer to the AI state, or nullptr on failure. Must be freed with free_ai_state.
+     */
+    extern "C" DLLEXPORT void* init_ai_state(const char* model_path) noexcept;
 
-// Returns an array of valid moves for a given board state
-// Writes the number of valid moves to *num_moves
-// The returned array must be freed with free_moves
-extern "C" DLLEXPORT chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) noexcept;
+    /**
+     * @brief Free resources associated with the AI state.
+     * @param state Opaque pointer previously returned by init_ai_state.
+     */
+    extern "C" DLLEXPORT void free_ai_state(void* state) noexcept;
 
-// Free a list of moves allocated by get_valid_moves
-extern "C" DLLEXPORT void free_moves(chess_move* moves) noexcept;
+    /**
+     * @brief Returns an array of valid moves for a given board state.
+     * @param board_state The current state of the board.
+     * @param num_moves Pointer to a size_t where the number of valid moves will be written.
+     * @return Pointer to an array of chess_move objects, or nullptr on failure. The returned array must be freed with free_moves.
+     */
+    extern "C" DLLEXPORT chess_move* get_valid_moves(board_state board_state, std::size_t* num_moves) noexcept;
 
-// Applies a move to board_state
-// Updates board_state->pieces
-// Updates board_state->en_passant_valid
-// Updates board_state->can_castle if the move if a castle, or the move is of a king or rook that has not moved yet
-// Increments board_state->turns_since_last_capture_or_pawn if necessary
-// Toggles board_state->current_player
-extern "C" DLLEXPORT void apply_move(board_state* board_state, chess_move move) noexcept;
+    /**
+     * @brief Free a list of moves allocated by get_valid_moves.
+     * @param moves Pointer previously returned by get_valid_moves.
+     */
+    extern "C" DLLEXPORT void free_moves(chess_move* moves) noexcept;
 
-// Have the AI make a move
-extern "C" DLLEXPORT void ai_move(ai::chess_ai_state* ai_state, board_state* board_state, std::int32_t difficulty) noexcept;
+    /**
+     * @brief Applies a move to the board_state, modifying it in place.
+     * @param board_state Pointer to the board state to modify.
+     * @param move The move to apply.
+     */
+    extern "C" DLLEXPORT void apply_move(board_state* board_state, chess_move move) noexcept;
 
-// Get a board_state representing a game that has not yet started
-extern "C" DLLEXPORT board_state get_initial_board_state() noexcept;
+    /**
+     * @brief Have the AI calculate and make a move, modifying the board_state in place.
+     * @param ai_state Opaque pointer to the AI state (cast internally).
+     * @param board_state Pointer to the board state to modify.
+     * @param difficulty Difficulty level (e.g., influencing search depth).
+     */
+    // Use void* for opaque pointer in C API, cast inside implementation
+    extern "C" DLLEXPORT void ai_move(void* ai_state, board_state* board_state, std::int32_t difficulty) noexcept;
 
-}
+    /**
+     * @brief Get a board_state representing a game that has not yet started.
+     * @return The initial board state.
+     */
+    extern "C" DLLEXPORT board_state get_initial_board_state() noexcept;
+
+} // namespace chess::python
