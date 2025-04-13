@@ -1,7 +1,7 @@
 #include "chess_ai.hpp"
 
 #include <ranges>
-#include <functional>
+#include <utility>
 #include <algorithm>
 #include <optional>
 #include <cassert>

@@ -9,12 +9,25 @@ add_executable(chess_cpp_main chess_cpp_main.cpp)
 
 target_link_libraries(chess_cpp_main PRIVATE chess_cpp)
 
+include(CheckIPOSupported)
+check_ipo_supported(RESULT result)
+if(result AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set_target_properties(chess_cpp PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_target_properties(chess_cpp_main PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
 if(MSVC)
     target_compile_definitions(chess_cpp PRIVATE NOMINMAX)
     target_compile_options(chess_cpp PRIVATE "/W4")
     target_compile_options(chess_cpp PRIVATE "/Zc:__cplusplus") # Use the correct value for the __cplusplus macro
 else()
     target_compile_options(chess_cpp PRIVATE -Wall -Wextra -Wpedantic)
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # Enable extra runtime checks
+        target_compile_definitions(chess_cpp PRIVATE _GLIBCXX_ASSERTIONS _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
+        target_compile_definitions(chess_cpp_main PRIVATE _GLIBCXX_ASSERTIONS _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
+    endif()
 endif()
 
 target_compile_features(chess_cpp PUBLIC c_std_11 cxx_std_20)

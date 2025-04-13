@@ -413,7 +413,6 @@ std::optional<board_position> get_king_position(const board_state& board, player
 
             if(piece.type == piece_type::king && piece.piece_player == player) {
                 return {{rank, file}};
-
             }
         }
     }
