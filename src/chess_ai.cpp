@@ -2,6 +2,7 @@
 
 #include <ranges>
 #include <utility>
+#include <limits>
 #include <algorithm>
 #include <optional>
 #include <cassert>
@@ -62,58 +63,89 @@ struct game_tree {
 
     std::optional<chess_move> move = {}; // The move that resulted in the current_state
 
-    std::vector<game_tree> children = {};
-
-    void deepen(std::size_t depth) {
-        if(depth == 0) return;
+    std::vector<game_tree> get_children() {
+        std::vector<game_tree> children = {};
 
         for(auto& move : get_valid_moves(current_state) | std::views::filter(should_consider_move)) {
             auto board = apply_move(current_state, move);
 
-            children.emplace_back(board, player, move).deepen(depth - 1);
+            children.emplace_back(board, player, move);
         }
+
+        return children;
     }
 
     // Rank the current state according to the minimax algorithm
-    std::int32_t minimax(std::size_t depth, bool maximizing) {
-        if(depth == 0 || children.empty()) {
+    std::int32_t minimax(std::size_t depth, bool maximizing, std::int32_t alpha, std::int32_t beta) {
+        if(depth == 0) {
             return rank_board(current_state, player);
         }
 
-        auto scores = children | std::views::transform([=](game_tree& child) {
-            return child.minimax(depth - 1, !maximizing);
-        });
+        auto children = get_children();
 
         if(maximizing) {
-            return *std::ranges::max_element(scores);
+            std::int32_t max_score = std::numeric_limits<decltype(max_score)>::min();
+
+            for(auto child : children) {
+                auto score = child.minimax(depth - 1, false, alpha, beta);
+
+                max_score = std::max(score, max_score);
+
+                if(score >= beta) {
+                    break;
+                }
+
+                alpha = std::max(score, alpha);
+            }
+
+            return max_score;
         } else {
-            return *std::ranges::min_element(scores);
+            std::int32_t min_score = std::numeric_limits<decltype(min_score)>::max();
+
+            for(auto child : children) {
+                auto score = child.minimax(depth - 1, true, alpha, beta);
+
+                min_score = std::min(score, min_score);
+
+                if(score <= alpha) {
+                    break;
+                }
+
+                beta = std::min(score, beta);
+            }
+
+            return min_score;
         }
     }
 
-    game_tree* get_best_move(std::size_t depth) {
+    board_state get_best_move(std::size_t depth) {
         assert(depth != 0);
-        assert(!children.empty());
 
-        auto children_with_scores = children | std::views::transform([=](game_tree& child) {
-            return std::make_pair(&child, child.minimax(depth - 1, false));
+        std::int32_t alpha = std::numeric_limits<decltype(alpha)>::min();
+        std::int32_t beta = std::numeric_limits<decltype(beta)>::max();
+
+        auto children = get_children();
+
+        std::vector<std::pair<game_tree*, std::int32_t>> children_with_scores;
+        children_with_scores.reserve(children.size());
+
+        std::ranges::transform(children, std::back_inserter(children_with_scores), [=](game_tree& child) {
+            return std::make_pair(&child, child.minimax(depth - 1, false, alpha, beta));
         });
 
-        auto projection = &decltype(children_with_scores[0])::second;
+        auto projection = &std::pair<game_tree*, std::int32_t>::second;
 
-        return (*std::ranges::max_element(children_with_scores, {}, projection)).first;
+        return std::ranges::max_element(children_with_scores, {}, projection)->first->current_state;
     }
 };
 
 void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
+    if(board.status != game_status::normal) throw std::runtime_error{"Game is over"};
+    if(difficulty == 0) throw std::runtime_error{"Difficulty must be at least 1"};
+
     game_tree tree{board, board.current_player};
 
-    tree.deepen(3);
-
-    auto move = tree.get_best_move(3)->move;
-    assert(move.has_value());
-
-    board = apply_move(board, *move);
+    board = tree.get_best_move(difficulty);
 }
 
 } // namespace chess::ai

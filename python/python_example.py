@@ -53,7 +53,7 @@ def main() -> None:
 
                 chess_engine.apply_move(move)
             else:
-                chess_engine.ai_move(0)
+                chess_engine.ai_move(4)
 
             status = chess_engine.board_state.status
 
