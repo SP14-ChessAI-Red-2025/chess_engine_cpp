@@ -32,7 +32,7 @@ ChessEngine has 4 methods in its API:
 - def apply_move(self, move: ChessMove) -> None:
   - Applies the move to the current board state
 - def ai_move(self, difficulty: int) -> None:
-  - Have the chess AI make a move.  Not implemented yet
+  - Have the chess AI make a move
 
 ChessEngine has 1 instance variable:
 - board_state: BoardState
