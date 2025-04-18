@@ -1,5 +1,6 @@
 import math
 import traceback
+import random
 
 import torch
 import torch.nn as nn
@@ -26,20 +27,47 @@ DEFAULT_MIN_PLY = 8
 
 # --- NNUE Model Definition ---
 class NNUE(nn.Module):
-    def __init__(self, feature_dim=TOTAL_FEATURES, embed_dim=128, hidden_dim=256):
+    def __init__(self, feature_dim=TOTAL_FEATURES, embed_dim=128, hidden_dim=256, dropout_prob=0.2):
+        """
+        NNUE Model Architecture with Dropout:
+        - Input Layer: EmbeddingBag for sparse input features.
+        - Hidden Layers: Fully connected layers with ReLU activation and Dropout.
+        - Output Layer: Single scalar output for evaluation.
+        """
         super().__init__()
-        # Use sparse=False as ONNX export might handle sparse better this way
+        # Input layer: EmbeddingBag to process sparse features
         self.input_layer = nn.EmbeddingBag(feature_dim, embed_dim, mode="sum", sparse=False)
+
+        # First hidden layer
         self.hidden1 = nn.Linear(embed_dim, hidden_dim)
         self.relu1 = nn.ReLU()
+        self.dropout1 = nn.Dropout(p=dropout_prob)  # Dropout after first hidden layer
+
+        # Second hidden layer
         self.hidden2 = nn.Linear(hidden_dim, hidden_dim // 2)
         self.relu2 = nn.ReLU()
+        self.dropout2 = nn.Dropout(p=dropout_prob)  # Dropout after second hidden layer
+
+        # Output layer
         self.output = nn.Linear(hidden_dim // 2, 1)
 
     def forward(self, features_indices, offsets=None):
+        """
+        Forward pass of the NNUE model.
+        :param features_indices: Sparse feature indices.
+        :param offsets: Offsets for EmbeddingBag.
+        :return: Evaluation score (scalar).
+        """
+        # Input layer
         x = self.input_layer(features_indices, offsets=offsets)
+
+        # Hidden layers with dropout
         x = self.relu1(self.hidden1(x))
+        x = self.dropout1(x)  # Apply dropout
         x = self.relu2(self.hidden2(x))
+        x = self.dropout2(x)  # Apply dropout
+
+        # Output layer
         x = self.output(x)
         return x
 
@@ -71,13 +99,17 @@ def extract_features(board: chess.Board) -> list[int]:
 
 # --- PGN Iterable Dataset ---
 class IterablePgnDataset(IterableDataset):
-    def __init__(self, pgn_files: list[str], min_ply: int):
+    def __init__(self, pgn_files: list[str], min_ply: int, is_validation: bool = False):
         """
         PyTorch IterableDataset for streaming data directly from PGN/ZST files.
+        :param pgn_files: List of PGN file paths.
+        :param min_ply: Minimum ply for positions to include.
+        :param is_validation: If True, all workers process the validation set.
         """
         super().__init__()
         self.pgn_files = pgn_files
         self.min_ply = min_ply
+        self.is_validation = is_validation
         if not self.pgn_files:
             raise ValueError("No PGN files provided to IterablePgnDataset.")
         print(f"IterablePgnDataset initialized with {len(self.pgn_files)} PGN/ZST files.")
@@ -123,7 +155,7 @@ class IterablePgnDataset(IterableDataset):
         worker_info = torch.utils.data.get_worker_info()
         files_to_process = self.pgn_files
 
-        if worker_info is not None: # Distribute files among workers
+        if worker_info is not None and not self.is_validation:  # Distribute files among workers during training
             num_workers = worker_info.num_workers
             worker_id = worker_info.id
             files_per_worker = int(math.ceil(len(self.pgn_files) / float(num_workers)))
@@ -148,27 +180,36 @@ class IterablePgnDataset(IterableDataset):
                 yield from self._parse_stream(pgn_stream)
 
             except Exception as e:
-                 print(f"Error opening/reading file {pgn_path}: {e}", file=sys.stderr)
-                 traceback.print_exc(file=sys.stderr)
-            finally: # Ensure resources are closed
-                 if pgn_stream is not None:
-                     try: pgn_stream.close()
-                     except Exception: pass
-                 if reader is not None:
-                     try: reader.close()
-                     except Exception: pass
-                 if compressed_file is not None:
-                     try: compressed_file.close()
-                     except Exception: pass
+                print(f"Error opening/reading file {pgn_path}: {e}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+            finally:  # Ensure resources are closed
+                if pgn_stream is not None:
+                    try:
+                        pgn_stream.close()
+                    except Exception:
+                        pass
+                if reader is not None:
+                    try:
+                        reader.close()
+                    except Exception:
+                        pass
+                if compressed_file is not None:
+                    try:
+                        compressed_file.close()
+                    except Exception:
+                        pass
 
 # --- HDF5 Iterable Dataset ---
 class IterableHdf5Dataset(IterableDataset):
-    def __init__(self, hdf5_files: list[str]):
+    def __init__(self, hdf5_files: list[str], is_validation: bool = False):
         """
         PyTorch IterableDataset for streaming data from multiple HDF5 files.
+        :param hdf5_files: List of HDF5 file paths.
+        :param is_validation: If True, all workers process the validation set.
         """
         super().__init__()
         self.hdf5_files = hdf5_files
+        self.is_validation = is_validation
         if not self.hdf5_files:
             raise ValueError("No HDF5 files provided to IterableHdf5Dataset.")
         print(f"IterableHdf5Dataset initialized with {len(self.hdf5_files)} HDF5 files.")
@@ -177,7 +218,7 @@ class IterableHdf5Dataset(IterableDataset):
         worker_info = torch.utils.data.get_worker_info()
         files_to_process = self.hdf5_files
 
-        if worker_info is not None: # Distribute files
+        if worker_info is not None and not self.is_validation:  # Distribute files among workers during training
             num_workers = worker_info.num_workers
             worker_id = worker_info.id
             files_per_worker = int(math.ceil(len(self.hdf5_files) / float(num_workers)))
@@ -200,10 +241,30 @@ class IterableHdf5Dataset(IterableDataset):
                         yield features.tolist(), float(outcome)
 
             except KeyError as e:
-                 print(f"Error: Missing dataset '{e}' in file {hdf5_path}. Skipping file.", file=sys.stderr)
+                print(f"Error: Missing dataset '{e}' in file {hdf5_path}. Skipping file.", file=sys.stderr)
             except Exception as e:
-                 print(f"Error opening/reading file {hdf5_path}: {e}", file=sys.stderr)
-                 traceback.print_exc(file=sys.stderr)
+                print(f"Error opening/reading file {hdf5_path}: {e}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+
+# --- HDF5 Dataset ---
+class HDF5Dataset(Dataset):
+    def __init__(self, hdf5_path: str):
+        """
+        PyTorch Dataset for loading data from an HDF5 file.
+        :param hdf5_path: Path to the HDF5 file.
+        """
+        self.hdf5_path = hdf5_path
+        with h5py.File(hdf5_path, "r") as hf:
+            self.num_samples = len(hf["evaluations"])
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        with h5py.File(self.hdf5_path, "r") as hf:
+            features = hf["features"][idx]
+            evaluation = hf["evaluations"][idx]
+        return torch.tensor(features, dtype=torch.long), torch.tensor(evaluation, dtype=torch.float32)
 
 # --- Collate Function ---
 def collate_fn(batch):
@@ -234,50 +295,125 @@ def collate_fn(batch):
     batch_outcomes = torch.tensor(outcomes, dtype=torch.float32).unsqueeze(1) # Ensure shape [batch_size, 1]
     return batch_indices, batch_offsets, batch_outcomes
 
-
 # --- Training ---
-def train_model(input_path, data_type, model_save_path, epochs=10, batch_size=1024, lr=0.001, num_data_workers=4, pgn_min_ply=DEFAULT_MIN_PLY):
-    """Main training loop."""
+def train_nnue_from_hdf5(hdf5_path: str, model_save_path: str, epochs: int = 10, batch_size: int = 1024, lr: float = 0.001):
+    """
+    Train the NNUE model using data from an HDF5 file.
+    :param hdf5_path: Path to the HDF5 file.
+    :param model_save_path: Path to save the trained model.
+    :param epochs: Number of training epochs.
+    :param batch_size: Batch size.
+    :param lr: Learning rate.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dataset = HDF5Dataset(hdf5_path)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    model = NNUE().to(device)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    for epoch in range(epochs):
+        model.train()
+        running_loss = 0.0
+        for features, evaluations in tqdm(dataloader, desc=f"Epoch {epoch+1}/{epochs}"):
+            features = features.to(device)
+            evaluations = evaluations.to(device).unsqueeze(1)
+
+            optimizer.zero_grad()
+            outputs = model(features)
+            loss = criterion(outputs, evaluations)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {running_loss / len(dataloader):.4f}")
+
+    torch.save(model.state_dict(), model_save_path)
+    print(f"Model saved to {model_save_path}")
+
+def train_model(input_path, data_type, model_save_path, load_model_path=None, epochs=10, batch_size=1024, lr=0.001, num_data_workers=12, pgn_min_ply=DEFAULT_MIN_PLY, val_split=0.1):
+    """Main training loop with validation loss tracking."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
     dataset = None
     train_loader = None
+    val_loader = None
 
     if data_type == 'hdf5':
         print(f"Streaming data from HDF5 files in: {input_path}")
         if not os.path.isdir(input_path):
-             print(f"Error: Input path '{input_path}' is not a directory for HDF5 data.")
-             return
+            print(f"Error: Input path '{input_path}' is not a directory for HDF5 data.")
+            return
         hdf5_files = sorted([os.path.join(input_path, f) for f in os.listdir(input_path) if f.lower().endswith((".hdf5", ".h5"))])
         if not hdf5_files:
             print(f"Error: No .hdf5 or .h5 files found in {input_path}")
             return
-        dataset = IterableHdf5Dataset(hdf5_files)
+
+        # Split HDF5 files into training and validation sets
+        split_idx = int(len(hdf5_files) * (1 - val_split))
+        train_files = hdf5_files[:split_idx]
+        val_files = hdf5_files[split_idx:]
+
+        train_dataset = IterableHdf5Dataset(train_files, is_validation=False)  # Training dataset
+        val_dataset = IterableHdf5Dataset(val_files, is_validation=True)  # Validation dataset
 
     elif data_type == 'pgn':
         print(f"Streaming data from PGN/ZST path: {input_path}")
         pgn_files = []
         if os.path.isdir(input_path):
-             pgn_files = sorted([os.path.join(input_path, f) for f in os.listdir(input_path) if f.lower().endswith((".pgn", ".pgn.zst"))])
+            pgn_files = sorted([os.path.join(input_path, f) for f in os.listdir(input_path) if f.lower().endswith((".pgn", ".pgn.zst"))])
         elif os.path.isfile(input_path) and input_path.lower().endswith((".pgn", ".pgn.zst")):
-             pgn_files = [input_path]
+            pgn_files = [input_path]
         if not pgn_files:
-             print(f"Error: No PGN or PGN.ZST files found at path: {input_path}")
-             return
-        dataset = IterablePgnDataset(pgn_files, min_ply=pgn_min_ply)
+            print(f"Error: No PGN or PGN.ZST files found at path: {input_path}")
+            return
+
+        # Split PGN files into training and validation sets
+        split_idx = int(len(pgn_files) * (1 - val_split))
+        train_files = pgn_files[:split_idx]
+        val_files = pgn_files[split_idx:]
+
+        # Sample a subset of training and validation files
+        train_sample_ratio = 1  # Use 100% of the training files
+        val_sample_ratio = 0.2    # Use 20% of the validation files
+
+        train_files = random.sample(train_files, int(len(train_files) * train_sample_ratio))
+        val_files = random.sample(val_files, int(len(val_files) * val_sample_ratio))
+
+        train_dataset = IterablePgnDataset(train_files, min_ply=pgn_min_ply, is_validation=False)  # Training dataset
+        val_dataset = IterablePgnDataset(val_files, min_ply=pgn_min_ply, is_validation=True)  # Validation dataset
 
     else:
         print(f"Error: Invalid data_type '{data_type}'. Choose 'hdf5' or 'pgn'.")
         return
 
-    # Create DataLoader
-    train_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=num_data_workers, pin_memory=True if device.type == 'cuda' else False)
+    # Create DataLoaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=num_data_workers, pin_memory=True if device.type == 'cuda' else False)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=num_data_workers, pin_memory=True if device.type == 'cuda' else False)
 
     model = NNUE().to(device)
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+
+    # Load model weights if path is provided
+    if load_model_path:
+        if os.path.exists(load_model_path):
+            print(f"Loading model state from: {load_model_path}")
+            try:
+                model.load_state_dict(torch.load(load_model_path, map_location=device))
+                print("Model weights loaded successfully.")
+            except Exception as e:
+                print(f"Error loading model weights from {load_model_path}: {e}")
+                print("Proceeding with freshly initialized model.")
+        else:
+            print(f"Warning: Load model path specified, but file not found: {load_model_path}")
+            print("Starting training from scratch.")
+    else:
+        print("No load model path provided. Starting training from scratch.")
 
     for epoch in range(epochs):
         start_time = time.time()
@@ -287,9 +423,8 @@ def train_model(input_path, data_type, model_save_path, epochs=10, batch_size=10
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", unit="batch")
         for batch_indices, batch_offsets, batch_outcomes in pbar:
-            # Skip empty batches that might result from filtering in datasets
             if batch_indices.numel() == 0 or batch_outcomes.numel() == 0:
-                 continue
+                continue
 
             batch_indices = batch_indices.to(device)
             batch_offsets = batch_offsets.to(device)
@@ -299,6 +434,7 @@ def train_model(input_path, data_type, model_save_path, epochs=10, batch_size=10
             outputs = model(batch_indices, batch_offsets)
             loss = criterion(outputs, batch_outcomes)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             current_batch_size = batch_outcomes.size(0)
@@ -306,21 +442,41 @@ def train_model(input_path, data_type, model_save_path, epochs=10, batch_size=10
             processed_samples += current_batch_size
 
             if processed_samples > 0:
-                 # Display current batch loss and running average loss
-                 pbar.set_postfix({"loss": f"{loss.item():.4f}", "avg_loss": f"{running_loss/processed_samples:.4f}"})
+                pbar.set_postfix({"loss": f"{loss.item():.4f}", "avg_loss": f"{running_loss/processed_samples:.4f}"})
 
         epoch_loss = running_loss / processed_samples if processed_samples > 0 else 0
         epoch_time = time.time() - start_time
         print(f'\nEpoch [{epoch+1}/{epochs}] completed in {epoch_time:.2f}s - Training Loss: {epoch_loss:.4f}')
-        sys.stdout.flush()
 
+        # Validation loop
+        model.eval()
+        val_loss = 0.0
+        val_samples = 0
+        with torch.no_grad():
+            for batch_indices, batch_offsets, batch_outcomes in val_loader:
+                if batch_indices.numel() == 0 or batch_outcomes.numel() == 0:
+                    continue
+
+                batch_indices = batch_indices.to(device)
+                batch_offsets = batch_offsets.to(device)
+                batch_outcomes = batch_outcomes.to(device)
+
+                outputs = model(batch_indices, batch_offsets)
+                loss = criterion(outputs, batch_outcomes)
+
+                current_batch_size = batch_outcomes.size(0)
+                val_loss += loss.item() * current_batch_size
+                val_samples += current_batch_size
+
+        avg_val_loss = val_loss / val_samples if val_samples > 0 else 0
+        print(f'Epoch [{epoch+1}/{epochs}] - Validation Loss: {avg_val_loss:.4f}')
+
+        # Save model after each epoch
         print(f'Saving model after epoch {epoch+1}...')
-        sys.stdout.flush()
         torch.save(model.state_dict(), model_save_path)
 
-        scheduler.step() # Adjust learning rate
+        scheduler.step()  # Adjust learning rate
         print("-" * 30)
-        sys.stdout.flush()
 
     print('Finished Training')
 
@@ -330,12 +486,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train NNUE model using data from HDF5 or PGN files.")
     parser.add_argument("input_path", help="Path to the input directory (HDF5) or file/directory (PGN/ZST).")
     parser.add_argument("model_save_path", help="Path to save the trained PyTorch model (.pt or .pth).")
+    parser.add_argument("--load_model_path", type=str, default=None, help="Path to a previously saved PyTorch model (.pt or .pth) to load weights from (optional).")
     parser.add_argument("--data_type", choices=['hdf5', 'pgn'], required=True, help="Type of input data ('hdf5' or 'pgn').")
     parser.add_argument("--epochs", type=int, default=20, help="Number of training epochs (default: 20).")
-    parser.add_argument("--batch_size", type=int, default=4096, help="Batch size (default: 4096).")
+    parser.add_argument("--batch_size", type=int, default=2048, help="Batch size (default: 2048).")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate (default: 0.001).")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of DataLoader workers (default: 4).")
     parser.add_argument("--min_ply", type=int, default=DEFAULT_MIN_PLY, help=f"Minimum ply for PGN positions (PGN mode only) (default: {DEFAULT_MIN_PLY}).")
+    parser.add_argument("--val_split", type=float, default=0.1, help="Fraction of data to use for validation (default: 0.1).")
 
     args = parser.parse_args()
 
@@ -354,9 +512,11 @@ if __name__ == "__main__":
         input_path=args.input_path,
         data_type=args.data_type,
         model_save_path=args.model_save_path,
+        load_model_path=args.load_model_path,
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
         num_data_workers=args.num_workers,
-        pgn_min_ply=args.min_ply
+        pgn_min_ply=args.min_ply,
+        val_split=args.val_split
     )

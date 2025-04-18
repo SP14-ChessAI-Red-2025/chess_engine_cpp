@@ -1,5 +1,6 @@
 import chess
 import chess.pgn
+import chess.engine
 import numpy as np
 import zstandard as zstd
 import io
@@ -34,7 +35,7 @@ PIECE_TYPES = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, 
 PIECE_TO_INDEX = {piece_type: i for i, piece_type in enumerate(PIECE_TYPES)}
 TOTAL_FEATURES = 768
 FEATURES_PER_COLOR = TOTAL_FEATURES // 2
-CHUNK_SIZE = 100000 # Default, can be overridden by args
+CHUNK_SIZE = 100000  # Default, can be overridden by args
 
 # --- Feature Extraction ---
 def extract_features(board: chess.Board) -> list[int]:
@@ -62,9 +63,21 @@ def extract_features(board: chess.Board) -> list[int]:
     if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
         return []
 
-    indices.sort() # Optional: Ensure consistent order
+    indices.sort()  # Optional: Ensure consistent order
     return indices
 
+# --- Stockfish Evaluation ---
+def evaluate_position(board: chess.Board, engine_path: str = "stockfish") -> float:
+    """
+    Evaluate a chess position using Stockfish.
+    :param board: A chess.Board object representing the position.
+    :param engine_path: Path to the Stockfish executable.
+    :return: Evaluation score in centipawns (positive for White, negative for Black).
+    """
+    with chess.engine.SimpleEngine.popen_uci(engine_path) as engine:
+        result = engine.analyse(board, chess.engine.Limit(depth=15))  # Adjust depth as needed
+        score = result["score"].white().score(mate_score=10000)  # Mate scores are capped
+        return score if score is not None else 0  # Return 0 if evaluation is unavailable
 
 def write_hdf5_chunk(hf, features_chunk, outcomes_chunk, plies_chunk, first_chunk_in_file):
     """
@@ -124,9 +137,9 @@ def write_hdf5_chunk(hf, features_chunk, outcomes_chunk, plies_chunk, first_chun
 def process_pgn_file_worker(input_args):
     """
     Reads a single PGN/ZST file, extracts features/outcomes,
-    and saves incrementally to an HDF5 file.
+    evaluates positions using Stockfish, and saves incrementally to an HDF5 file.
     """
-    pgn_path, output_hdf5_path, min_ply = input_args
+    pgn_path, output_hdf5_path, min_ply, engine_path = input_args
     worker_pid = os.getpid()
     base_pgn_name = os.path.basename(pgn_path)
     base_hdf5_name = os.path.basename(output_hdf5_path)
@@ -180,7 +193,8 @@ def process_pgn_file_worker(input_args):
                         worker_pid,
                         base_pgn_name,
                         CHUNK_SIZE,
-                        hdf5_write_callback
+                        hdf5_write_callback,
+                        engine_path
                     )
                     # Write final remaining chunk
                     hdf5_write_callback(features_current_chunk, outcomes_current_chunk, plies_current_chunk)
@@ -215,7 +229,7 @@ def process_pgn_file_worker(input_args):
     return True
 
 
-def _process_stream_chunked(pgn_stream, features_chunk, outcomes_chunk, plies_chunk, min_ply, worker_pid, filename, chunk_size, write_callback):
+def _process_stream_chunked(pgn_stream, features_chunk, outcomes_chunk, plies_chunk, min_ply, worker_pid, filename, chunk_size, write_callback, engine_path):
     """Helper to process PGN stream and manage chunks."""
     game_count = 0
     position_count_total = 0
@@ -299,9 +313,10 @@ def _process_stream_chunked(pgn_stream, features_chunk, outcomes_chunk, plies_ch
 if __name__ == "__main__":
     multiprocessing.freeze_support()
 
-    parser = argparse.ArgumentParser(description="Convert PGN/ZST files to HDF5 using file-level multiprocessing.")
+    parser = argparse.ArgumentParser(description="Convert PGN/ZST files to HDF5 using Stockfish evaluation.")
     parser.add_argument("input_path", help="Path to input PGN/ZST file or directory.")
     parser.add_argument("output_dir", help="Directory to save output HDF5 file(s).")
+    parser.add_argument("--engine_path", default="stockfish", help="Path to the Stockfish executable.")
     parser.add_argument("--min_ply", type=int, default=8, help="Minimum ply count (default: 8).")
     parser.add_argument("--workers", type=int, default=None, help="Number of worker processes (default: CPU count).")
     parser.add_argument("--chunk_size", type=int, default=CHUNK_SIZE, help=f"Positions per HDF5 write chunk (default: {CHUNK_SIZE}).")
@@ -339,7 +354,7 @@ if __name__ == "__main__":
             elif base_name.lower().endswith(".pgn"): output_filename_base = base_name[:-4]
             else: output_filename_base = os.path.splitext(base_name)[0]
             output_file = os.path.join(args.output_dir, f"{output_filename_base}.hdf5")
-            tasks.append((input_file, output_file, args.min_ply))
+            tasks.append((input_file, output_file, args.min_ply, args.engine_path))
 
         if args.workers is None:
             try: num_workers = os.cpu_count() or 4
@@ -387,7 +402,7 @@ if __name__ == "__main__":
             output_file = os.path.join(args.output_dir, f"{output_filename_base}.hdf5")
             print(f"Processing single file: {args.input_path} -> {output_file}")
             sys.stdout.flush()
-            process_pgn_file_worker((args.input_path, output_file, args.min_ply))
+            process_pgn_file_worker((args.input_path, output_file, args.min_ply, args.engine_path))
         else:
             print(f"Error: Input file '{args.input_path}' is not .pgn or .pgn.zst.", file=sys.stderr)
             sys.exit(1)

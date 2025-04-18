@@ -205,8 +205,8 @@ namespace chess::ai {
 
         std::size_t search_depth;
         if (difficulty <= 1) search_depth = 2; // Lower depth for lower difficulty
-        else if (difficulty <= 3) search_depth = 4; // Medium depth
-        else search_depth = 6; // Higher depth for higher difficulty
+        else if (difficulty <= 2) search_depth = 3; // Medium depth
+        else search_depth = 4; // Higher depth for higher difficulty
 
         std::cout << "[INFO] AI using search depth: " << search_depth << " (Difficulty: " << difficulty << ")" << std::endl;
 

@@ -11,9 +11,9 @@ import time
 import chess_dir.ai_chess as ai
 from ctypes import *
 
-MODEL_FILENAME = "nnue_model.onnx"
+MODEL_FILENAME = "trained_nnue.onnx"
 LIBRARY_PATTERN = "chess_cpp_pybind*.{ext}"
-DEFAULT_AI_DIFFICULTY = 5
+DEFAULT_AI_DIFFICULTY = 3
 
 piece_strings = [["♙", "♘", "♗", "♖", "♕", "♔"], ["♟", "♞", "♝", "♜", "♛", "♚"]]
 
