@@ -59,7 +59,7 @@ std::int32_t rank_board(const board_state& board, player player) {
 struct game_tree {
     board_state current_state;
 
-    player player; // The maximizing player
+    enum player player; // The maximizing player
 
     std::optional<chess_move> move = {}; // The move that resulted in the current_state
 
