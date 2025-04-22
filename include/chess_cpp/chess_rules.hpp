@@ -5,11 +5,16 @@
 
 #include <vector>
 
-#ifdef _MSC_VER
-#define DLLEXPORT __declspec(dllexport)
-#else
-#define DLLEXPORT
+// Use existing value of DLLEXPORT if already defined
+#ifndef DLLEXPORT
+    #ifdef _MSC_VER
+        // Windows needs __declspec(dllexport) to make a symbol available from a dll
+        #define DLLEXPORT __declspec(dllexport)
+    #else
+        #define DLLEXPORT
+    #endif
 #endif
+
 
 namespace chess {
 enum class piece_type : int {

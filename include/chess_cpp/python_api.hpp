@@ -10,17 +10,6 @@
 // Forward declare AI state if possible to reduce header dependencies
 namespace chess::ai { struct chess_ai_state; }
 
-// --- Updated DLLEXPORT Macro ---
-#ifdef _WIN32 // Windows
-    #define DLLEXPORT __declspec(dllexport)
-#elif defined(__GNUC__) || defined(__clang__) // GCC or Clang
-    #define DLLEXPORT __attribute__((visibility("default")))
-#else // Other compilers/platforms
-    #define DLLEXPORT
-    #pragma warning DLLEXPORT is not defined for this platform
-#endif
-// --- End Update ---
-
 
 // Functions in this namespace will be called from Python (likely via ctypes)
 namespace chess::python {

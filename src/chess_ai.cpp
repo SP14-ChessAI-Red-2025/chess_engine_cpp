@@ -9,6 +9,12 @@
 
 namespace chess::ai {
 
+#ifdef NNUE_ENABLED
+chess_ai_state::chess_ai_state(const char* model_path) : nnue_evaluator{model_path} {
+
+}
+#endif
+
 // Whether the AI should consider the move
 // The AI currently ignores resignations and claiming draws
 bool should_consider_move(chess_move move) {
