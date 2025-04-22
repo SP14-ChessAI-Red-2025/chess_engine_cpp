@@ -5,6 +5,27 @@ add_library(chess_cpp SHARED
         threefold_repetition.cpp
 )
 
+if(NNUE_ENABLED)
+    target_sources(chess_cpp PRIVATE
+            nnue_evaluator.cpp ../include/chess_cpp/nnue_evaluator.hpp
+    )
+
+    if(NOT DEFINED ONNX_LIBRARY_PATH OR NOT DEFINED ONNX_INCLUDE_PATH)
+        message(FATAL_ERROR "Must specify ONNX_LIBRARY_PATH and ONNX_INCLUDE_PATH")
+    endif()
+
+    target_link_directories(chess_cpp PRIVATE ${ONNX_LIBRARY_PATH})
+    target_link_libraries(chess_cpp PRIVATE onnxruntime)
+
+    target_compile_definitions(chess_cpp PUBLIC NNUE_ENABLED NNUE_DISABLE_CUDA)
+
+    if(NNUE_DISABLE_CUDA)
+        target_compile_definitions(chess_cpp PRIVATE NNUE_DISABLE_CUDA)
+    endif()
+
+    target_include_directories(chess_cpp PRIVATE ${ONNX_INCLUDE_PATH})
+endif()
+
 add_executable(chess_cpp_main chess_cpp_main.cpp)
 
 target_link_libraries(chess_cpp_main PRIVATE chess_cpp)

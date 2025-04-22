@@ -32,6 +32,7 @@ namespace chess::ai {
             // Set graph optimization level (optional but recommended)
             session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED); // Or ORT_ENABLE_ALL
 
+#ifndef NNUE_DISABLE_CUDA
             // --- Attempt to enable CUDA Execution Provider ---
             // This requires ONNX Runtime to be built with CUDA support.
             // If CUDA is unavailable or fails to initialize, ORT will fall back to CPU.
@@ -41,7 +42,7 @@ namespace chess::ai {
             // cuda_options.gpu_mem_limit = /* some value in bytes */;
             session_options.AppendExecutionProvider_CUDA(cuda_options);
             // --- End CUDA Setup ---
-
+#endif
 
             // --- Create Session ---
             try {
