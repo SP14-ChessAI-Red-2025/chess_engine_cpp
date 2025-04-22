@@ -13,6 +13,15 @@ import time
 import sys
 import math
 import gc
+import signal
+
+# Global flag to indicate termination
+terminate_flag = False
+
+def handle_termination_signal(signum, frame):
+    global terminate_flag
+    print("\n[INFO] Termination signal received. Finalizing and exiting...")
+    terminate_flag = True
 
 try:
     import h5py
@@ -35,7 +44,7 @@ PIECE_TYPES = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, 
 PIECE_TO_INDEX = {piece_type: i for i, piece_type in enumerate(PIECE_TYPES)}
 TOTAL_FEATURES = 768
 FEATURES_PER_COLOR = TOTAL_FEATURES // 2
-CHUNK_SIZE = 100000  # Default, can be overridden by args
+CHUNK_SIZE = 25000  # Default, can be overridden by args
 
 # --- Feature Extraction ---
 def extract_features(board: chess.Board) -> list[int]:
@@ -75,9 +84,29 @@ def evaluate_position(board: chess.Board, engine_path: str = "stockfish") -> flo
     :return: Evaluation score in centipawns (positive for White, negative for Black).
     """
     with chess.engine.SimpleEngine.popen_uci(engine_path) as engine:
-        result = engine.analyse(board, chess.engine.Limit(depth=15))  # Adjust depth as needed
+        result = engine.analyse(board, chess.engine.Limit(depth=4))
         score = result["score"].white().score(mate_score=10000)  # Mate scores are capped
         return score if score is not None else 0  # Return 0 if evaluation is unavailable
+
+def evaluate_positions(boards: list[chess.Board], engine_path: str = "stockfish", depth: int = 4) -> list[float]:
+    """
+    Evaluate multiple chess positions using Stockfish in a batch.
+    :param boards: A list of chess.Board objects representing the positions.
+    :param engine_path: Path to the Stockfish executable.
+    :param depth: Depth for Stockfish evaluation.
+    :return: A list of evaluation scores in centipawns.
+    """
+    with chess.engine.SimpleEngine.popen_uci(engine_path) as engine:
+        results = []
+        for board in boards:
+            try:
+                result = engine.analyse(board, chess.engine.Limit(depth=depth))
+                score = result["score"].white().score(mate_score=10000)  # Mate scores are capped
+                results.append(score if score is not None else 0)
+            except Exception as e:
+                print(f"[ERROR] Failed to evaluate position: {e}", file=sys.stderr)
+                results.append(0)  # Default to 0 if evaluation fails
+        return results
 
 def write_hdf5_chunk(hf, features_chunk, outcomes_chunk, plies_chunk, first_chunk_in_file):
     """
@@ -193,8 +222,7 @@ def process_pgn_file_worker(input_args):
                         worker_pid,
                         base_pgn_name,
                         CHUNK_SIZE,
-                        hdf5_write_callback,
-                        engine_path
+                        hdf5_write_callback
                     )
                     # Write final remaining chunk
                     hdf5_write_callback(features_current_chunk, outcomes_current_chunk, plies_current_chunk)
@@ -229,8 +257,8 @@ def process_pgn_file_worker(input_args):
     return True
 
 
-def _process_stream_chunked(pgn_stream, features_chunk, outcomes_chunk, plies_chunk, min_ply, worker_pid, filename, chunk_size, write_callback, engine_path):
-    """Helper to process PGN stream and manage chunks."""
+def _process_stream_chunked(pgn_stream, features_chunk, outcomes_chunk, plies_chunk, min_ply, worker_pid, filename, chunk_size, write_callback):
+    global terminate_flag
     game_count = 0
     position_count_total = 0
     position_in_current_chunk = 0
@@ -241,174 +269,151 @@ def _process_stream_chunked(pgn_stream, features_chunk, outcomes_chunk, plies_ch
     desc = f"[PID {worker_pid}] File {filename}"
     pbar = tqdm(desc=desc, unit=" game", leave=False, position=worker_pid % 30, mininterval=5.0, smoothing=0.1)
 
-    while True:
+    while not terminate_flag:
         game = None
-        node_being_processed = None
         try:
             game = chess.pgn.read_game(pgn_stream)
-            if game is None: break
+            if game is None:
+                break
             game_count += 1
             pbar.update(1)
 
             result = game.headers.get("Result", "*")
-            if result == "1-0": outcome = 1.0
-            elif result == "0-1": outcome = 0.0
-            elif result == "1/2-1/2": outcome = 0.5
-            else: skipped_games += 1; continue
+            if result == "1-0":
+                outcome = 1.0
+            elif result == "0-1":
+                outcome = 0.0
+            elif result == "1/2-1/2":
+                outcome = 0.5
+            else:
+                skipped_games += 1
+                continue
 
-            processed_positions_in_game = 0
             for node in game.mainline():
-                node_being_processed = node
+                if terminate_flag:
+                    break
+
                 parent_node = node.parent
-                if parent_node is None: continue
+                if parent_node is None:
+                    continue
 
                 board_before_move = parent_node.board()
                 current_ply = parent_node.ply()
 
-                if current_ply >= min_ply:
-                    features = extract_features(board_before_move)
-                    if features:
-                        features_chunk.append(features)
-                        outcomes_chunk.append(outcome)
-                        plies_chunk.append(current_ply)
-                        position_count_total += 1
-                        position_in_current_chunk += 1
-                        processed_positions_in_game += 1
+                if current_ply < min_ply:
+                    continue
 
-                        if position_in_current_chunk >= chunk_size:
-                            write_callback(features_chunk, outcomes_chunk, plies_chunk)
-                            features_chunk.clear()
-                            outcomes_chunk.clear()
-                            plies_chunk.clear()
-                            position_in_current_chunk = 0
+                comment = node.comment
+                try:
+                    if "Stockfish eval:" in comment:
+                        eval_str = comment.split("Stockfish eval:")[1].split()[0]
+                        evaluation = float(eval_str) * 100
+                    else:
+                        continue
+                except (ValueError, IndexError):
+                    tqdm.write(f"[PID {worker_pid}] Skipping position due to malformed comment: {comment}")
+                    continue
 
-            if processed_positions_in_game > 0:
-                processed_games_count += 1
+                features = extract_features(board_before_move)
+                if features:
+                    features_chunk.append(features)
+                    outcomes_chunk.append(evaluation)
+                    plies_chunk.append(current_ply)
+                    position_count_total += 1
+                    position_in_current_chunk += 1
+
+                    if position_in_current_chunk >= chunk_size:
+                        write_callback(features_chunk, outcomes_chunk, plies_chunk)
+                        features_chunk.clear()
+                        outcomes_chunk.clear()
+                        plies_chunk.clear()
+                        position_in_current_chunk = 0
+
+            processed_games_count += 1
 
         except (ValueError, KeyError, IndexError, chess.IllegalMoveError, chess.InvalidMoveError, AttributeError) as e:
-             error_count += 1
-             if error_count % 1000 == 0: # Log occasionally
-                 move_san = "N/A"
-                 if node_being_processed and node_being_processed.move:
-                     try: move_san = node_being_processed.parent.board().san(node_being_processed.move)
-                     except: move_san = str(node_being_processed.move)
-                 tqdm.write(f"\n[PID {worker_pid}] Error game {game_count} near move {move_san} in {filename} (err# {error_count}): {e}")
-             continue
+            error_count += 1
+            skipped_games += 1
+            tqdm.write(f"[PID {worker_pid}] Skipping game {game_count} due to error: {e}")
+            continue
         except Exception as e:
-             error_count += 1
-             tqdm.write(f"\n[PID {worker_pid}] Unexpected error game {game_count} in {filename} (err# {error_count}): {e}")
-             traceback.print_exc(file=sys.stderr)
-             continue
+            error_count += 1
+            tqdm.write(f"[PID {worker_pid}] Unexpected error in game {game_count}: {e}")
+            continue
 
-        if game_count % 5000 == 0: # Less frequent postfix update
-             pbar.set_postfix({"pos": f"{position_count_total/1000:.1f}k", "skip": skipped_games, "err": error_count}, refresh=False)
+    if features_chunk:
+        write_callback(features_chunk, outcomes_chunk, plies_chunk)
 
     pbar.close()
-    tqdm.write(f"[PID {worker_pid}] Stream done {filename}: {processed_games_count} games ({position_count_total} pos), {skipped_games} skipped, {error_count} errors.")
-    sys.stdout.flush()
+    tqdm.write(f"[PID {worker_pid}] Processed {processed_games_count} games, skipped {skipped_games} games, with {error_count} errors.")
     return processed_games_count
 
+def convert_json_to_hdf5(json_path, output_hdf5_path):
+    """
+    Convert a JSON file containing chess evaluations to an HDF5 file.
+    :param json_path: Path to the input JSON file.
+    :param output_hdf5_path: Path to the output HDF5 file.
+    """
+    print(f"Converting JSON file: {json_path} to HDF5 file: {output_hdf5_path}")
+    features = []
+    outcomes = []
+    plies = []
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as json_file:
+            for line in tqdm(json_file, desc="Processing JSON lines"):
+                data = json.loads(line)
+                fen = data["fen"]
+                evals = data.get("evals", [])
+
+                if evals:
+                    best_eval = evals[0]
+                    pvs = best_eval.get("pvs", [])
+                    if pvs:
+                        cp = pvs[0].get("cp")
+                        mate = pvs[0].get("mate")
+                        if cp is not None:
+                            evaluation = cp / 100.0
+                        elif mate is not None:
+                            evaluation = 10000 if mate > 0 else -10000
+                        else:
+                            continue
+
+                        board = chess.Board(fen)
+                        feature_indices = extract_features(board)
+                        if feature_indices:
+                            features.append(feature_indices)
+                            outcomes.append(evaluation)
+
+                            # Calculate ply count correctly
+                            ply_count = (board.fullmove_number - 1) * 2
+                            if not board.turn:  # If it's Black's turn, add 1
+                                ply_count += 1
+                            plies.append(ply_count)
+
+        with h5py.File(output_hdf5_path, "w") as hf:
+            vlen_dtype = h5py.special_dtype(vlen=np.int32)
+            hf.create_dataset("features", data=np.array([np.array(f, dtype=np.int32) for f in features], dtype=object), dtype=vlen_dtype)
+            hf.create_dataset("outcomes", data=np.array(outcomes, dtype=np.float32))
+            hf.create_dataset("plies", data=np.array(plies, dtype=np.uint16))
+
+        print(f"Successfully converted JSON to HDF5: {output_hdf5_path}")
+
+    except Exception as e:
+        print(f"Error during JSON to HDF5 conversion: {e}")
+        traceback.print_exc()
 
 # --- Main ---
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
-
-    parser = argparse.ArgumentParser(description="Convert PGN/ZST files to HDF5 using Stockfish evaluation.")
-    parser.add_argument("input_path", help="Path to input PGN/ZST file or directory.")
-    parser.add_argument("output_dir", help="Directory to save output HDF5 file(s).")
-    parser.add_argument("--engine_path", default="stockfish", help="Path to the Stockfish executable.")
-    parser.add_argument("--min_ply", type=int, default=8, help="Minimum ply count (default: 8).")
-    parser.add_argument("--workers", type=int, default=None, help="Number of worker processes (default: CPU count).")
-    parser.add_argument("--chunk_size", type=int, default=CHUNK_SIZE, help=f"Positions per HDF5 write chunk (default: {CHUNK_SIZE}).")
+    parser = argparse.ArgumentParser(description="Convert JSON files to HDF5 or PGN.")
+    parser.add_argument("input_path", help="Path to the input JSON file.")
+    parser.add_argument("output_path", help="Path to the output HDF5 or PGN file.")
+    parser.add_argument("--format", choices=["hdf5", "pgn"], required=True, help="Output format ('hdf5' or 'pgn').")
 
     args = parser.parse_args()
 
-    CHUNK_SIZE = args.chunk_size
-    print(f"Using HDF5 chunk size (positions per write): {CHUNK_SIZE}")
-    sys.stdout.flush()
-
-    os.makedirs(args.output_dir, exist_ok=True)
-    overall_start_time = time.time()
-
-    files_to_process = []
-    if os.path.isdir(args.input_path):
-        print(f"Scanning directory: {args.input_path}")
-        sys.stdout.flush()
-        try:
-            for f in sorted(os.listdir(args.input_path)):
-                if f.lower().endswith((".pgn", ".pgn.zst")):
-                    files_to_process.append(os.path.join(args.input_path, f))
-        except OSError as e:
-             print(f"Error reading input directory {args.input_path}: {e}")
-             sys.exit(1)
-        if not files_to_process:
-            print("No PGN or PGN.ZST files found.")
-            sys.exit(0)
-        print(f"Found {len(files_to_process)} files.")
-        sys.stdout.flush()
-
-        tasks = []
-        for input_file in files_to_process:
-            base_name = os.path.basename(input_file)
-            if base_name.lower().endswith(".pgn.zst"): output_filename_base = base_name[:-8]
-            elif base_name.lower().endswith(".pgn"): output_filename_base = base_name[:-4]
-            else: output_filename_base = os.path.splitext(base_name)[0]
-            output_file = os.path.join(args.output_dir, f"{output_filename_base}.hdf5")
-            tasks.append((input_file, output_file, args.min_ply, args.engine_path))
-
-        if args.workers is None:
-            try: num_workers = os.cpu_count() or 4
-            except NotImplementedError: num_workers = 4
-            print(f"Defaulting to {num_workers} workers.")
-        else: num_workers = max(1, args.workers)
-
-        pool_size = min(num_workers, len(tasks))
-        if tasks and pool_size == 0: pool_size = 1
-
-        print(f"Starting pool with {pool_size} workers...")
-        sys.stdout.flush()
-
-        if not tasks: print("No tasks."); sys.exit(0)
-
-        results = []
-        try:
-            with multiprocessing.Pool(processes=pool_size) as pool:
-                with tqdm(total=len(tasks), desc="Overall Progress", unit="file") as pbar:
-                    for result in pool.imap_unordered(process_pgn_file_worker, tasks):
-                        results.append(result)
-                        pbar.update(1)
-        except KeyboardInterrupt:
-            print("\nInterrupted! Closing pool...")
-            try: pool.close(); pool.join()
-            except: pass
-            print("Pool closed.")
-            sys.exit(1)
-        except Exception as e:
-            print(f"\nPool processing error: {e}", file=sys.stderr); traceback.print_exc(file=sys.stderr)
-            try: pool.close(); pool.join()
-            except: pass
-
-        success_count = sum(1 for r in results if r is True)
-        failure_count = len(tasks) - success_count
-        print(f"\nMultiprocessing done. Success: {success_count}, Failed/Skipped: {failure_count}")
-        sys.stdout.flush()
-
-    elif os.path.isfile(args.input_path):
-        if args.input_path.lower().endswith((".pgn", ".pgn.zst")):
-            base_name = os.path.basename(args.input_path)
-            if base_name.lower().endswith(".pgn.zst"): output_filename_base = base_name[:-8]
-            elif base_name.lower().endswith(".pgn"): output_filename_base = base_name[:-4]
-            else: output_filename_base = os.path.splitext(base_name)[0]
-            output_file = os.path.join(args.output_dir, f"{output_filename_base}.hdf5")
-            print(f"Processing single file: {args.input_path} -> {output_file}")
-            sys.stdout.flush()
-            process_pgn_file_worker((args.input_path, output_file, args.min_ply, args.engine_path))
-        else:
-            print(f"Error: Input file '{args.input_path}' is not .pgn or .pgn.zst.", file=sys.stderr)
-            sys.exit(1)
-    else:
-        print(f"Error: Input path '{args.input_path}' not valid.", file=sys.stderr)
+    if args.format == "hdf5":
+        convert_json_to_hdf5(args.input_path, args.output_path)
+    elif args.format == "pgn":
+        print("Error: The 'process_json_evaluations' function is not implemented.")
         sys.exit(1)
-
-    overall_duration = time.time() - overall_start_time
-    print(f"\nTotal execution time: {overall_duration:.2f} seconds.")

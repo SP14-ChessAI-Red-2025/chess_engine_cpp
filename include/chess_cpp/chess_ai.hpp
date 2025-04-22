@@ -1,6 +1,6 @@
 #pragma once
 
-#include "chess_rules.hpp"
+#include "chess_rules.hpp" // Use the definitions from chess_rules.hpp
 #include "nnue_evaluator.hpp"
 #include <vector>
 #include <memory>
@@ -8,8 +8,14 @@
 #include <cstdint>
 #include <string>
 #include <limits>
+#include <map> // Add this to use std::map
+
+#ifndef CHESS_AI_HPP
+#define CHESS_AI_HPP
 
 namespace chess::ai {
+
+    extern const std::map<piece_type, int> piece_values; // Declare as extern
 
     struct game_tree;
 
@@ -32,7 +38,6 @@ namespace chess::ai {
         double deepen(std::size_t depth, NNUEEvaluator& evaluator, double alpha, double beta);
 
         void add_child(const chess_move& m, const board_state& next_state);
-
     };
 
     struct chess_ai_state {
@@ -45,5 +50,9 @@ namespace chess::ai {
 
     bool should_consider_move(const chess_move& move);
     bool are_states_equal(const board_state& s1, const board_state& s2);
+    bool is_square_attacked(const board_state& board, const board_position& square, player opponent_color);
+    bool threatens_high_value_piece(const board_state& board, const chess_move& move);
 
 } // namespace chess::ai
+
+#endif // CHESS_AI_HPP

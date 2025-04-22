@@ -88,6 +88,10 @@ def main() -> None:
         "-d", "--difficulty", type=int, default=DEFAULT_AI_DIFFICULTY,
         help=f"AI difficulty level (maps to depth in C++). Default: {DEFAULT_AI_DIFFICULTY}"
     )
+    parser.add_argument(
+        "--book_path", type=str, default="../model/Human.bin",
+        help="Path to the Polyglot opening book (.bin file)."
+    )
     args = parser.parse_args()
     ai_difficulty = args.difficulty
 

@@ -6,8 +6,34 @@
 namespace chess {
 struct board_state_hasher {
     std::size_t operator()(const board_state& board) const {
-        // TODO: Implement a proper hash function based on piece positions, castling rights, en passant target, and current player
-        return 0; // Placeholder - This will make the set ineffective!
+        std::size_t hash = 0;
+
+        // Hash piece positions
+        for (std::uint8_t rank = 0; rank < 8; rank++) {
+            for (std::uint8_t file = 0; file < 8; file++) {
+                const auto& piece = board.pieces[rank][file];
+                if (piece.type != piece_type::none) {
+                    hash ^= std::hash<int>()(static_cast<int>(piece.type)) ^ 
+                            std::hash<int>()(static_cast<int>(piece.piece_player)) ^ 
+                            (rank * 8 + file);
+                }
+            }
+        }
+
+        // Hash castling rights
+        for (int i = 0; i < 4; ++i) {
+            hash ^= std::hash<bool>()(board.can_castle[i]) << i;
+        }
+
+        // Hash en passant validity
+        for (int i = 0; i < 16; ++i) {
+            hash ^= std::hash<bool>()(board.en_passant_valid[i]) << i;
+        }
+
+        // Hash current player
+        hash ^= std::hash<int>()(static_cast<int>(board.current_player));
+
+        return hash;
     }
 };
 

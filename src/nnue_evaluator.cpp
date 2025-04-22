@@ -1,14 +1,12 @@
 #include "chess_cpp/nnue_evaluator.hpp"
 #include "chess_cpp/chess_rules.hpp"
-#include <onnxruntime_cxx_api.h> // Include ONNX Runtime C++ API
+#include <onnxruntime_cxx_api.h>
 #include <vector>
 #include <string>
 #include <stdexcept>
 #include <array>
 #include <memory>
 #include <iostream>
-#include <numeric> // For std::iota if needed, though not used in final version
-#include <algorithm> // For std::sort
 #include <filesystem>
 
 // Define a simple logging macro
@@ -118,14 +116,18 @@ namespace chess::ai {
     }
 
     double NNUEEvaluator::evaluate(const chess::board_state& board) {
-        auto feature_indices = boardToFeaturesIndices(board);
+        static thread_local std::vector<int64_t> feature_indices;
+        static thread_local std::vector<int64_t> offsets_data = {0};
+
+        feature_indices.clear();
+        feature_indices = boardToFeaturesIndices(board);
+
         if (feature_indices.empty()) return 0.0;
 
         std::array<int64_t, 1> indices_shape = {static_cast<int64_t>(feature_indices.size())};
         Ort::Value indices_tensor = Ort::Value::CreateTensor<int64_t>(
             *memory_info_cpu_, feature_indices.data(), feature_indices.size(), indices_shape.data(), indices_shape.size());
 
-        std::vector<int64_t> offsets_data = {0};
         std::array<int64_t, 1> offsets_shape = {1};
         Ort::Value offsets_tensor = Ort::Value::CreateTensor<int64_t>(
             *memory_info_cpu_, offsets_data.data(), offsets_data.size(), offsets_shape.data(), offsets_shape.size());

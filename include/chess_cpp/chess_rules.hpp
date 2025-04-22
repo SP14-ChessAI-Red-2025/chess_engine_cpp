@@ -26,15 +26,17 @@ enum class move_type : int {
     en_passant = 2,
     castle = 3,
     promotion = 4,
-    claim_draw = 5,
-    resign = 6
+    check = 5, // Add this if it is a valid move type
+    claim_draw = 6,
+    resign = 7
 };
 
 enum class game_status : int {
     normal = 0,
     draw = 1,
     checkmate = 2,
-    resigned = 3
+    resigned = 3,
+    draw_by_repetition = 4
 };
 
 struct board_position {

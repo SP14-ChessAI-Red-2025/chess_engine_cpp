@@ -3,17 +3,18 @@
 #include <chess_cpp/nnue_evaluator.hpp>
 #include <vector>
 #include <memory>
+#include <functional> // For std::hash
 #include <limits>
 #include <algorithm>
 #include <optional>
-#include <cmath>
 #include <string>
 #include <stdexcept>
 #include <iostream>
 #include <future>
-#include <thread>
+#include <unordered_map>
+#include <mutex>
 #include <map>
-#include <utility>
+#include <cmath> // For std::isnan and std::isinf
 
 namespace chess::ai {
 
@@ -60,11 +61,13 @@ namespace chess::ai {
     int score_move(const board_state& board, const chess_move& move) {
         int score = 0;
 
+        // Promotion moves
         if (move.type == move_type::promotion) {
             score = 20000 + get_piece_value(move.promotion_target);
             return score;
         }
 
+        // Capture moves (MVV-LVA: Most Valuable Victim - Least Valuable Attacker)
         if (move.type == move_type::capture) {
             piece captured_piece = board.pieces[move.target_position.rank][move.target_position.file];
             piece capturing_piece = board.pieces[move.start_position.rank][move.start_position.file];
@@ -74,47 +77,130 @@ namespace chess::ai {
             return score;
         }
 
+        // En passant
         if (move.type == move_type::en_passant) {
-             int victim_value = get_piece_value(piece_type::pawn);
-             int aggressor_value = get_piece_value(piece_type::pawn);
-             score = 10000 + (victim_value * 10) - aggressor_value;
-             return score;
+            int victim_value = get_piece_value(piece_type::pawn);
+            int aggressor_value = get_piece_value(piece_type::pawn);
+            score = 10000 + (victim_value * 10) - aggressor_value;
+            return score;
         }
 
+        // Castling
         if (move.type == move_type::castle) {
-             score = 50; // Small bonus for castling
-             return score;
+            score = 50; // Small bonus for castling
+            return score;
         }
+
+        // Positional bonuses
+        piece moving_piece = board.pieces[move.start_position.rank][move.start_position.file];
+        if (moving_piece.type == piece_type::pawn) {
+            // Bonus for advancing pawns
+            score += 10 * (move.target_position.rank - move.start_position.rank);
+        } else if (moving_piece.type == piece_type::knight || moving_piece.type == piece_type::bishop) {
+            // Bonus for developing minor pieces
+            score += 30;
+        } else if (moving_piece.type == piece_type::rook || moving_piece.type == piece_type::queen) {
+            // Bonus for controlling open files or attacking
+            score += 20;
+        }
+
+        // Center control bonus
+        const std::vector<std::pair<int, int>> center_squares = {{3, 3}, {3, 4}, {4, 3}, {4, 4}};
+        for (const auto& center : center_squares) {
+            if (move.target_position.rank == center.first && move.target_position.file == center.second) {
+                score += 50; // Bonus for controlling the center
+            }
+        }
+
+        // Penalty for leaving the king exposed
+        if (moving_piece.type == piece_type::king) {
+            // Check if the king moves to an unsafe square
+            player opponent_color = (board.current_player == player::white) ? player::black : player::white;
+            if (is_square_attacked(board, move.target_position, opponent_color)) {
+                score -= 100; // Penalize unsafe king moves
+            }
+        }
+
+        if (move.type == move_type::check) {
+            score += 50; // Bonus for delivering a check
+        }
+        if (threatens_high_value_piece(board, move)) {
+            score += 100; // Bonus for threatening a high-value piece
+        }
+
         // Other moves get a base score of 0 initially
         return score;
     }
 
+    bool is_square_attacked(const board_state& board, const board_position& square, player opponent_color) {
+        for (const auto& move : chess::get_valid_moves(board)) {
+            // Check if the move targets the square and is made by the opponent
+            const auto& attacking_piece = board.pieces[move.start_position.rank][move.start_position.file];
+            if (move.target_position == square && attacking_piece.piece_player == opponent_color) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool threatens_high_value_piece(const board_state& board, const chess_move& move) {
+        const piece& target_piece = board.pieces[move.target_position.rank][move.target_position.file];
+        return target_piece.type != piece_type::none && piece_values.at(target_piece.type) >= 5; // Example threshold
+    }
 
     game_tree::game_tree(const board_state& state)
         : current_state(state), score(std::numeric_limits<double>::quiet_NaN()), move(), children() {}
+    static std::unordered_map<std::size_t, double> transposition_table;
+    static std::mutex transposition_table_mutex;
+
+    struct board_state_hasher {
+        std::size_t operator()(const board_state& state) const {
+            // Example hash function combining board state properties
+            std::size_t hash = 0;
+            for (int r = 0; r < 8; ++r) {
+                for (int f = 0; f < 8; ++f) {
+                    hash ^= std::hash<int>()(static_cast<int>(state.pieces[r][f].type)) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+                }
+            }
+            hash ^= std::hash<int>()(static_cast<int>(state.current_player));
+            return hash;
+        }
+    };
 
     // Alpha-Beta deepen function with Move Ordering
     double game_tree::deepen(std::size_t depth, NNUEEvaluator& evaluator, double alpha, double beta) {
         bool is_terminal = (current_state.status != game_status::normal);
 
+        // Hash the current board state
+        std::size_t board_hash = board_state_hasher()(current_state);
+
+        {
+            std::lock_guard<std::mutex> lock(transposition_table_mutex);
+            if (transposition_table.find(board_hash) != transposition_table.end()) {
+                return transposition_table[board_hash];
+            }
+        }
+
         if (depth == 0 || is_terminal) {
             try {
                 score = evaluator.evaluate(current_state);
-                // Add large bonus/penalty for checkmate based on depth
-                if (current_state.status == game_status::checkmate) {
-                     score = (current_state.current_player == player::white) ?
-                             (-200000.0 - static_cast<double>(depth)) :
-                              (200000.0 + static_cast<double>(depth));
-                } else if (current_state.status == game_status::draw || current_state.status == game_status::resigned) {
-                    score = 0.0;
+                if (std::isnan(score)) {
+                    if (current_state.status == game_status::checkmate) {
+                        score = (current_state.current_player == player::white) ? -200000.0 : 200000.0;
+                    } else if (current_state.status == game_status::draw || current_state.status == game_status::resigned) {
+                        score = 0.0;
+                    } else {
+                        score = -1000.0; // Fallback for unexpected NaN
+                    }
                 }
             } catch (const std::runtime_error& e) {
-                 std::cerr << "Evaluation error at depth " << depth << ": " << e.what() << std::endl;
-                 // Assign definite scores for terminal states even if evaluation fails
-                 score = (current_state.status == game_status::checkmate) ?
-                         ((current_state.current_player == player::white) ? -200000.0 : 200000.0) : 0.0;
+                std::cerr << "Evaluation error at depth " << depth << ": " << e.what() << std::endl;
+                score = (current_state.status == game_status::checkmate) ?
+                        ((current_state.current_player == player::white) ? -200000.0 : 200000.0) : 0.0;
             }
-            if (std::isnan(score)) score = 0.0; // Handle potential NaN from evaluation
+
+            // Cache the result in the transposition table
+            transposition_table[board_hash] = score;
             return score;
         }
 
@@ -122,7 +208,7 @@ namespace chess::ai {
         std::vector<std::pair<int, chess_move>> scored_moves;
         scored_moves.reserve(valid_moves.size());
 
-        for(const auto& m : valid_moves) {
+        for (const auto& m : valid_moves) {
             if (should_consider_move(m)) {
                 scored_moves.emplace_back(score_move(current_state, m), m);
             }
@@ -134,7 +220,6 @@ namespace chess::ai {
         });
 
         bool is_maximizing_player = (current_state.current_player == player::white);
-        bool raised_alpha = false; // Used for potential future optimizations
 
         if (is_maximizing_player) {
             score = -std::numeric_limits<double>::infinity();
@@ -179,6 +264,8 @@ namespace chess::ai {
                  score = 0.0;
              }
         }
+        // Cache the result in the transposition table
+        transposition_table[board_hash] = score;
         return score;
     }
 
@@ -202,6 +289,11 @@ namespace chess::ai {
 
     void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
         auto current_root_state = board;
+
+        if (current_root_state.status != game_status::normal) {
+            std::cerr << "[INFO] Game is over. No moves to make." << std::endl;
+            return;
+        }
 
         std::size_t search_depth;
         if (difficulty <= 1) search_depth = 2; // Lower depth for lower difficulty
@@ -237,17 +329,40 @@ namespace chess::ai {
         std::vector<chess_move> future_moves;
 
         std::cout << "[INFO] Launching parallel search tasks for " << scored_root_moves.size() << " considered moves..." << std::endl;
+
+        // Use a thread-safe transposition table
+        std::mutex transposition_table_mutex;
+
         for (const auto& scored_move_pair : scored_root_moves) {
             const auto& current_move = scored_move_pair.second;
             board_state next_state = chess::apply_move(current_root_state, current_move);
-            // Launch async task to deepen search from this move
+
+            // Capture evaluator_ by reference and use thread-safe transposition table
             futures.push_back(std::async(std::launch::async,
-                [this, next_state, search_depth]() -> double {
+                [&evaluator = this->evaluator_, next_state, search_depth, &transposition_table_mutex]() -> double {
                     auto move_subtree_root = std::make_unique<game_tree>(next_state);
-                    // Initial alpha/beta for the root of this subtree search
-                    return move_subtree_root->deepen(search_depth - 1, this->evaluator_,
-                                                     -std::numeric_limits<double>::infinity(),
-                                                      std::numeric_limits<double>::infinity());
+
+                    // Thread-safe access to transposition table
+                    std::size_t hash = board_state_hasher()(next_state);
+                    {
+                        std::lock_guard<std::mutex> lock(transposition_table_mutex);
+                        if (transposition_table.find(hash) != transposition_table.end()) {
+                            return transposition_table[hash];
+                        }
+                    }
+
+                    // Perform the search
+                    double score = move_subtree_root->deepen(search_depth - 1, evaluator,
+                                                             -std::numeric_limits<double>::infinity(),
+                                                              std::numeric_limits<double>::infinity());
+
+                    // Store the result in the transposition table
+                    {
+                        std::lock_guard<std::mutex> lock(transposition_table_mutex);
+                        transposition_table[hash] = score;
+                    }
+
+                    return score;
                 }
             ));
             future_moves.push_back(current_move);

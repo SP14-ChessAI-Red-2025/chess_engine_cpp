@@ -1,4 +1,6 @@
-#include "chess_rules.hpp"
+#include "chess_cpp/chess_rules.hpp" // Ensure this includes is_square_attacked and previous_board_states
+#include "chess_cpp/chess_ai.hpp"
+#include "chess_cpp/threefold_repetition.hpp"
 
 #include <cstdlib>
 #include <algorithm>
@@ -28,6 +30,10 @@ struct board_offset {
     int file_offset;
 };
 
+constexpr std::uint8_t KING_START_FILE = 4;
+constexpr std::uint8_t KINGSIDE_ROOK_FILE = 7;
+constexpr std::uint8_t QUEENSIDE_ROOK_FILE = 0;
+
 bool in_bounds(int rank, int file) {
     return !(rank < 0 || rank >= 8 || file < 0 || file >= 8);
 }
@@ -51,19 +57,17 @@ std::optional<board_position> apply_offset(board_position position, board_offset
 // is_pawn_move is true if the piece being moved is a pawn
 // Returns true if the target position is empty, otherwise returns false
 bool check_position(const board_state& board, player player, board_position position, board_offset offset, bool is_pawn_move, std::back_insert_iterator<std::vector<chess_move>> it) {
-    bool can_continue = true;
-
     auto target_position_opt = apply_offset(position, offset);
-
-    if(!target_position_opt) return false;
+    if (!target_position_opt) return false;
 
     auto [rank, file] = *target_position_opt;
 
     auto type = move_type::normal_move;
+    bool can_continue = true;
 
-    if(board.pieces[rank][file].type != piece_type::none) {
-        if(board.pieces[rank][file].piece_player == player) return false;
-        if(is_pawn_move) return false; // Pawns capture diagonally, not forward
+    if (board.pieces[rank][file].type != piece_type::none) {
+        if (board.pieces[rank][file].piece_player == player) return false;
+        if (is_pawn_move) return false; // Pawns capture diagonally, not forward
         type = move_type::capture;
         can_continue = false;
     }
@@ -90,10 +94,10 @@ void get_en_passant_moves(const board_state& board, board_position start_positio
         start_position.file + 1
     };
 
-    for(auto file : target_files) {
-        if(file < 0 || file > 7) continue;
+    for (auto file : target_files) {
+        if (file < 0 || file >= 8) continue; // Bounds check
 
-        if(!board.en_passant_valid[file + (player == player::white ? 8 : 0)]) continue;
+        if (!board.en_passant_valid[file + (player == player::white ? 8 : 0)]) continue;
 
         *it = {
             .type = move_type::en_passant,
@@ -121,32 +125,52 @@ void get_promotion_moves(board_position start_position, board_position target_po
 }
 
 std::vector<chess_move> get_castle_moves(const board_state& board, board_position position) {
-    if(position.file != 0 && position.file != 7) return {};
+    if (position.file != 4) return {}; // King must start on the correct file for castling
 
     auto player = board.pieces[position.rank][position.file].piece_player;
-
-    bool kingside = position.file != 0;
-    bool castling_allowed = board.can_castle[player == player::white ? (kingside ? 0 : 1) : (kingside ? 2 : 3)];
-
-    if(!castling_allowed) return {};
 
     std::vector<chess_move> moves;
     std::uint8_t home_rank = player == player::white ? 0 : 7;
 
-    if(kingside) {
-        for(std::uint8_t file = 5; file <= 6; file++) {
-            if(board.pieces[home_rank][file].type != piece_type::none) return {};
+    // Kingside castling
+    if (board.can_castle[player == player::white ? 0 : 2]) {
+        bool path_clear = true;
+        for (std::uint8_t file = 5; file <= 6; file++) {
+            if (file >= 8 || board.pieces[home_rank][file].type != piece_type::none) { // Bounds check
+                path_clear = false;
+                break;
+            }
         }
-    } else {
-        for(std::uint8_t file = 1; file <= 3; file++) {
-            if(board.pieces[home_rank][file].type != piece_type::none) return {};
+        if (path_clear && !chess::ai::is_square_attacked(board, {home_rank, 4}, player) &&
+            !chess::ai::is_square_attacked(board, {home_rank, 5}, player) &&
+            !chess::ai::is_square_attacked(board, {home_rank, 6}, player)) {
+            moves.push_back({
+                .type = move_type::castle,
+                .start_position = position,
+                .target_position = {home_rank, 6} // King moves to file 6
+            });
         }
     }
 
-    moves.push_back({
-        .type = move_type::castle,
-        .start_position = position
-    });
+    // Queenside castling
+    if (board.can_castle[player == player::white ? 1 : 3]) {
+        bool path_clear = true;
+        for (std::uint8_t file = 1; file <= 3; file++) {
+            if (board.pieces[home_rank][file].type != piece_type::none) {
+                path_clear = false;
+                break;
+            }
+        }
+        if (path_clear && !chess::ai::is_square_attacked(board, {home_rank, 4}, player) &&
+            !chess::ai::is_square_attacked(board, {home_rank, 3}, player) &&
+            !chess::ai::is_square_attacked(board, {home_rank, 2}, player)) {
+            moves.push_back({
+                .type = move_type::castle,
+                .start_position = position,
+                .target_position = {home_rank, 2} // King moves to file 2
+            });
+        }
+    }
 
     return moves;
 }
@@ -188,7 +212,7 @@ std::vector<chess_move> get_bishop_moves(const board_state& board, board_positio
 std::vector<chess_move> get_queen_moves(const board_state& board, board_position position, std::size_t limit = 7) {
     auto horizontal_moves = get_rook_moves(board, position, limit);
     auto diagonal_moves = get_bishop_moves(board, position, limit);
-    std::ranges::copy(horizontal_moves, std::back_inserter(diagonal_moves));
+    diagonal_moves.insert(diagonal_moves.end(), std::make_move_iterator(horizontal_moves.begin()), std::make_move_iterator(horizontal_moves.end()));
     return diagonal_moves;
 }
 
@@ -338,7 +362,9 @@ std::optional<board_position> get_king_position(const board_state& board, player
 // Whether player is in check
 bool is_player_in_check(board_state board, player player) {
     std::optional<board_position> king_position = get_king_position(board, player);
-    if(!king_position) throw invalid_board_state_error{"Invalid board state: no king"};
+    if (!king_position) {
+        throw invalid_board_state_error{"Invalid board state: no king for the current player"};
+    }
 
     // Temporarily switch player to check attacks from opponent's perspective
     board.current_player = (player == player::white) ? player::black : player::white;
@@ -438,19 +464,15 @@ board_state apply_move_impl(board_state board, chess_move move) {
             break;
         }
         case move_type::castle: {
-            auto [rook_rank, rook_file] = move.start_position;
-            player current_p = board.current_player;
-            std::uint8_t king_rank = (current_p == player::white) ? 0 : 7;
-            std::uint8_t king_start_file = 4;
-
-            bool kingside = (rook_file == 7);
-            std::uint8_t king_target_file = kingside ? 6 : 2;
+            std::uint8_t king_start_file = 4; // Corrected
+            bool kingside = (move.target_position.file == 6);
+            std::uint8_t rook_start_file = kingside ? 7 : 0;
             std::uint8_t rook_target_file = kingside ? 5 : 3;
 
-            board.pieces[king_rank][king_target_file] = board.pieces[king_rank][king_start_file];
-            board.pieces[king_rank][king_start_file] = {};
-            board.pieces[rook_rank][rook_target_file] = board.pieces[rook_rank][rook_file];
-            board.pieces[rook_rank][rook_file] = {};
+            board.pieces[move.target_position.rank][move.target_position.file] = board.pieces[move.start_position.rank][king_start_file];
+            board.pieces[move.start_position.rank][king_start_file] = {};
+            board.pieces[move.target_position.rank][rook_target_file] = board.pieces[move.target_position.rank][rook_start_file];
+            board.pieces[move.target_position.rank][rook_start_file] = {};
             break;
         }
         case move_type::en_passant: {
@@ -548,6 +570,18 @@ void update_status(board_state& board) {
     // TODO: Check for insufficient material (requires analyzing remaining pieces)
 }
 
+void update_status(game_status& status, const board_state& current_board, previous_board_states& history) {
+    // Add the current board state to the history
+    history.add_board_state(current_board);
+
+    // Check if a draw by threefold repetition is allowed
+    if (history.draw_allowed) {
+        status = game_status::draw_by_repetition;
+    }
+
+    // Handle other game-ending conditions (e.g., checkmate, stalemate)
+    // ...existing code...
+}
 
 std::vector<chess_move> get_valid_moves(const board_state& board_state) {
     std::vector<chess_move> pseudo_legal_moves;
@@ -582,6 +616,16 @@ board_state apply_move(board_state board, chess_move move) {
     board = apply_move_impl(board, move);
     update_status(board); // Update status after the move is fully applied
     return board;
+}
+
+void apply_move(board_state& board, const chess_move& move, previous_board_states& history) {
+    piece moved_piece = board.pieces[move.start_position.rank][move.start_position.file];
+
+    // Clear history if the move is irreversible
+    history.clear_history_on_irreversible_move(move, moved_piece);
+
+    // Apply the move
+    board = apply_move_impl(board, move);
 }
 
 } // namespace chess

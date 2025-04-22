@@ -18,6 +18,7 @@ import chess.pgn
 import zstandard as zstd
 from tqdm import tqdm
 import h5py
+import json
 
 TOTAL_FEATURES = 768
 FEATURES_PER_COLOR = TOTAL_FEATURES // 2
@@ -27,7 +28,7 @@ DEFAULT_MIN_PLY = 8
 
 # --- NNUE Model Definition ---
 class NNUE(nn.Module):
-    def __init__(self, feature_dim=TOTAL_FEATURES, embed_dim=128, hidden_dim=256, dropout_prob=0.2):
+    def __init__(self, feature_dim=TOTAL_FEATURES, embed_dim=128, hidden_dim=256, dropout_prob=0.1):
         """
         NNUE Model Architecture with Dropout:
         - Input Layer: EmbeddingBag for sparse input features.
@@ -333,16 +334,173 @@ def train_nnue_from_hdf5(hdf5_path: str, model_save_path: str, epochs: int = 10,
     torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to {model_save_path}")
 
-def train_model(input_path, data_type, model_save_path, load_model_path=None, epochs=10, batch_size=1024, lr=0.001, num_data_workers=12, pgn_min_ply=DEFAULT_MIN_PLY, val_split=0.1):
-    """Main training loop with validation loss tracking."""
+# Move the JsonDataset class definition here
+class JsonDataset(Dataset):
+    def __init__(self, json_path):
+        """
+        Dataset for training directly from a JSON file.
+        :param json_path: Path to the JSON file containing evaluations.
+        """
+        self.data = []
+        with open(json_path, "r", encoding="utf-8") as f:
+            for line in f:
+                entry = json.loads(line)
+                fen = entry["fen"]
+                evals = entry.get("evals", [])
+                if evals:
+                    # Use the first evaluation and its first principal variation
+                    best_eval = evals[0]
+                    pvs = best_eval.get("pvs", [])
+                    if pvs:
+                        cp = pvs[0].get("cp")
+                        mate = pvs[0].get("mate")
+                        if cp is not None:
+                            evaluation = cp / 100.0  # Convert centipawns to a float
+                        elif mate is not None:
+                            evaluation = 10000 if mate > 0 else -10000  # Large value for mate
+                        else:
+                            continue
+                        self.data.append((fen, evaluation))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        fen, evaluation = self.data[idx]
+        board = chess.Board(fen)
+        features = self.extract_features(board)
+        return torch.tensor(features, dtype=torch.long), torch.tensor(evaluation, dtype=torch.float32)
+
+    @staticmethod
+    def extract_features(board):
+        """
+        Extracts feature indices for a simple 768-feature NNUE input layer.
+        """
+        TOTAL_FEATURES = 768
+        FEATURES_PER_COLOR = TOTAL_FEATURES // 2
+        PIECE_TYPES = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]
+        PIECE_TO_INDEX = {piece_type: i for i, piece_type in enumerate(PIECE_TYPES)}
+
+        indices = []
+        for piece_type in PIECE_TYPES:
+            piece_index = PIECE_TO_INDEX[piece_type]
+            base_index = piece_index * 64
+            for square in board.pieces(piece_type, chess.WHITE):
+                feature_index = base_index + square
+                if 0 <= feature_index < FEATURES_PER_COLOR:
+                    indices.append(feature_index)
+        black_offset = FEATURES_PER_COLOR
+        for piece_type in PIECE_TYPES:
+            piece_index = PIECE_TO_INDEX[piece_type]
+            base_index = piece_index * 64 + black_offset
+            for square in board.pieces(piece_type, chess.BLACK):
+                feature_index = base_index + square
+                if FEATURES_PER_COLOR <= feature_index < TOTAL_FEATURES:
+                    indices.append(feature_index)
+
+        if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
+            return []  # Invalid position if a king is missing
+        return indices
+
+# Define IterableJsonDataset before train_model
+class IterableJsonDataset(IterableDataset):
+    def __init__(self, json_path):
+        """
+        PyTorch IterableDataset for streaming data directly from a large JSON file.
+        :param json_path: Path to the JSON file containing evaluations.
+        """
+        super().__init__()
+        self.json_path = json_path
+
+    def parse_json_line(self, line):
+        """
+        Parse a single line of JSON and extract features and evaluation.
+        :param line: A JSON string representing a single position.
+        :return: (features, evaluation) tuple.
+        """
+        data = json.loads(line)
+        fen = data["fen"]
+        evals = data.get("evals", [])
+        if evals:
+            # Use the first evaluation and its first principal variation
+            best_eval = evals[0]
+            pvs = best_eval.get("pvs", [])
+            if pvs:
+                cp = pvs[0].get("cp")
+                mate = pvs[0].get("mate")
+                if cp is not None:
+                    evaluation = cp / 100.0  # Convert centipawns to a float
+                elif mate is not None:
+                    evaluation = 10000 if mate > 0 else -10000  # Large value for mate
+                else:
+                    return None
+
+                # Cap evaluations to [-10, 10]
+                if abs(evaluation) > 10:
+                    evaluation = 10 if evaluation > 0 else -10
+
+                board = chess.Board(fen)
+                features = self.extract_features(board)
+                if features:
+                    return features, evaluation
+        return None
+
+    @staticmethod
+    def extract_features(board):
+        """
+        Extracts feature indices for a simple 768-feature NNUE input layer.
+        """
+        indices = []
+        for piece_type in PIECE_TYPES:
+            piece_index = PIECE_TO_INDEX[piece_type]
+            base_index = piece_index * 64
+            for square in board.pieces(piece_type, chess.WHITE):
+                feature_index = base_index + square
+                if 0 <= feature_index < FEATURES_PER_COLOR:
+                    indices.append(feature_index)
+        black_offset = FEATURES_PER_COLOR
+        for piece_type in PIECE_TYPES:
+            piece_index = PIECE_TO_INDEX[piece_type]
+            base_index = piece_index * 64 + black_offset
+            for square in board.pieces(piece_type, chess.BLACK):
+                feature_index = base_index + square
+                if FEATURES_PER_COLOR <= feature_index < TOTAL_FEATURES:
+                    indices.append(feature_index)
+
+        if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
+            return []  # Invalid position if a king is missing
+        return indices
+
+    def __iter__(self):
+        """
+        Iterate over the JSON file line by line.
+        """
+        with open(self.json_path, "r", encoding="utf-8") as f:
+            for line in f:
+                result = self.parse_json_line(line)
+                if result:
+                    yield result
+
+# Ensure train_model is defined after IterableJsonDataset
+def train_model(input_path, data_type, model_save_path, load_model_path=None, epochs=10, batch_size=1024, lr=0.001, num_data_workers=12, val_split=0.1):
+    """
+    Main training loop with validation loss tracking.
+    Supports JSON, HDF5, and PGN data types.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    dataset = None
+    train_dataset = None
+    val_dataset = None
     train_loader = None
     val_loader = None
 
-    if data_type == 'hdf5':
+    if data_type == 'json':
+        print(f"Loading data from JSON file: {input_path}")
+        train_dataset = IterableJsonDataset(input_path)
+        val_dataset = None  # Validation is not explicitly handled for JSON in this case
+
+    elif data_type == 'hdf5':
         print(f"Streaming data from HDF5 files in: {input_path}")
         if not os.path.isdir(input_path):
             print(f"Error: Input path '{input_path}' is not a directory for HDF5 data.")
@@ -376,27 +534,21 @@ def train_model(input_path, data_type, model_save_path, load_model_path=None, ep
         train_files = pgn_files[:split_idx]
         val_files = pgn_files[split_idx:]
 
-        # Sample a subset of training and validation files
-        train_sample_ratio = 1  # Use 100% of the training files
-        val_sample_ratio = 0.2    # Use 20% of the validation files
-
-        train_files = random.sample(train_files, int(len(train_files) * train_sample_ratio))
-        val_files = random.sample(val_files, int(len(val_files) * val_sample_ratio))
-
-        train_dataset = IterablePgnDataset(train_files, min_ply=pgn_min_ply, is_validation=False)  # Training dataset
-        val_dataset = IterablePgnDataset(val_files, min_ply=pgn_min_ply, is_validation=True)  # Validation dataset
+        train_dataset = IterablePgnDataset(train_files, min_ply=DEFAULT_MIN_PLY, is_validation=False)  # Training dataset
+        val_dataset = IterablePgnDataset(val_files, min_ply=DEFAULT_MIN_PLY, is_validation=True)  # Validation dataset
 
     else:
-        print(f"Error: Invalid data_type '{data_type}'. Choose 'hdf5' or 'pgn'.")
+        print(f"Error: Invalid data_type '{data_type}'. Choose 'json', 'hdf5', or 'pgn'.")
         return
 
     # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=num_data_workers, pin_memory=True if device.type == 'cuda' else False)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=num_data_workers, pin_memory=True if device.type == 'cuda' else False)
+    if val_dataset:
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=num_data_workers, pin_memory=True if device.type == 'cuda' else False)
 
     model = NNUE().to(device)
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-6)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
     # Load model weights if path is provided
@@ -449,27 +601,28 @@ def train_model(input_path, data_type, model_save_path, load_model_path=None, ep
         print(f'\nEpoch [{epoch+1}/{epochs}] completed in {epoch_time:.2f}s - Training Loss: {epoch_loss:.4f}')
 
         # Validation loop
-        model.eval()
-        val_loss = 0.0
-        val_samples = 0
-        with torch.no_grad():
-            for batch_indices, batch_offsets, batch_outcomes in val_loader:
-                if batch_indices.numel() == 0 or batch_outcomes.numel() == 0:
-                    continue
+        if val_loader:
+            model.eval()
+            val_loss = 0.0
+            val_samples = 0
+            with torch.no_grad():
+                for batch_indices, batch_offsets, batch_outcomes in val_loader:
+                    if batch_indices.numel() == 0 or batch_outcomes.numel() == 0:
+                        continue
 
-                batch_indices = batch_indices.to(device)
-                batch_offsets = batch_offsets.to(device)
-                batch_outcomes = batch_outcomes.to(device)
+                    batch_indices = batch_indices.to(device)
+                    batch_offsets = batch_offsets.to(device)
+                    batch_outcomes = batch_outcomes.to(device)
 
-                outputs = model(batch_indices, batch_offsets)
-                loss = criterion(outputs, batch_outcomes)
+                    outputs = model(batch_indices, batch_offsets)
+                    loss = criterion(outputs, batch_outcomes)
 
-                current_batch_size = batch_outcomes.size(0)
-                val_loss += loss.item() * current_batch_size
-                val_samples += current_batch_size
+                    current_batch_size = batch_outcomes.size(0)
+                    val_loss += loss.item() * current_batch_size
+                    val_samples += current_batch_size
 
-        avg_val_loss = val_loss / val_samples if val_samples > 0 else 0
-        print(f'Epoch [{epoch+1}/{epochs}] - Validation Loss: {avg_val_loss:.4f}')
+            avg_val_loss = val_loss / val_samples if val_samples > 0 else 0
+            print(f'Epoch [{epoch+1}/{epochs}] - Validation Loss: {avg_val_loss:.4f}')
 
         # Save model after each epoch
         print(f'Saving model after epoch {epoch+1}...')
@@ -480,33 +633,20 @@ def train_model(input_path, data_type, model_save_path, load_model_path=None, ep
 
     print('Finished Training')
 
-
 # --- Main ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train NNUE model using data from HDF5 or PGN files.")
-    parser.add_argument("input_path", help="Path to the input directory (HDF5) or file/directory (PGN/ZST).")
+    parser = argparse.ArgumentParser(description="Train NNUE model using data from JSON, HDF5, or PGN files.")
+    parser.add_argument("input_path", help="Path to the input JSON file, HDF5 directory, or PGN file/directory.")
     parser.add_argument("model_save_path", help="Path to save the trained PyTorch model (.pt or .pth).")
     parser.add_argument("--load_model_path", type=str, default=None, help="Path to a previously saved PyTorch model (.pt or .pth) to load weights from (optional).")
-    parser.add_argument("--data_type", choices=['hdf5', 'pgn'], required=True, help="Type of input data ('hdf5' or 'pgn').")
+    parser.add_argument("--data_type", choices=['json', 'hdf5', 'pgn'], required=True, help="Type of input data ('json', 'hdf5', or 'pgn').")
     parser.add_argument("--epochs", type=int, default=20, help="Number of training epochs (default: 20).")
     parser.add_argument("--batch_size", type=int, default=2048, help="Batch size (default: 2048).")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate (default: 0.001).")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of DataLoader workers (default: 4).")
-    parser.add_argument("--min_ply", type=int, default=DEFAULT_MIN_PLY, help=f"Minimum ply for PGN positions (PGN mode only) (default: {DEFAULT_MIN_PLY}).")
     parser.add_argument("--val_split", type=float, default=0.1, help="Fraction of data to use for validation (default: 0.1).")
 
     args = parser.parse_args()
-
-    if args.data_type == 'hdf5' and not os.path.isdir(args.input_path):
-         print(f"Error: For data_type 'hdf5', input_path must be a directory: {args.input_path}")
-         sys.exit(1)
-    elif args.data_type == 'pgn' and not os.path.exists(args.input_path):
-         print(f"Error: Input path not found for data_type 'pgn': {args.input_path}")
-         sys.exit(1)
-
-    save_dir = os.path.dirname(args.model_save_path)
-    if save_dir and not os.path.exists(save_dir):
-         os.makedirs(save_dir)
 
     train_model(
         input_path=args.input_path,
@@ -517,6 +657,5 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         lr=args.lr,
         num_data_workers=args.num_workers,
-        pgn_min_ply=args.min_ply,
         val_split=args.val_split
     )
