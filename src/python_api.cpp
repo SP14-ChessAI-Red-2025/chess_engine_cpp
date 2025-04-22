@@ -7,8 +7,13 @@
 
 namespace chess::python {
 
-void* init_ai_state() noexcept {
-    return new(std::nothrow) ai::chess_ai_state{};
+void* init_ai_state(const char* model_path) noexcept {
+    try {
+        return new(std::nothrow) ai::chess_ai_state{model_path};
+    } catch(...) {
+        // TODO: Return error to Python somehow
+        return nullptr;
+    }
 }
 
 void free_ai_state(void* state) noexcept {

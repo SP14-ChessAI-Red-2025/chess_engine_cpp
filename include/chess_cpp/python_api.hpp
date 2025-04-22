@@ -61,12 +61,11 @@ namespace chess::python {
 
     /**
      * @brief Have the AI calculate and make a move, modifying the board_state in place.
-     * @param ai_state Opaque pointer to the AI state (cast internally).
+     * @param ai_state Opaque pointer to the AI state
      * @param board_state Pointer to the board state to modify.
      * @param difficulty Difficulty level (e.g., influencing search depth).
      */
-    // Use void* for opaque pointer in C API, cast inside implementation
-    extern "C" DLLEXPORT void ai_move(void* ai_state, board_state* board_state, std::int32_t difficulty) noexcept;
+    extern "C" DLLEXPORT void ai_move(ai::chess_ai_state* ai_state, board_state* board_state, std::int32_t difficulty) noexcept;
 
     /**
      * @brief Get a board_state representing a game that has not yet started.
