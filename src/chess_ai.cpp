@@ -15,19 +15,25 @@ chess_ai_state::chess_ai_state(const char* model_path) : nnue_evaluator{model_pa
 }
 #endif
 
+using score_t = double;
+
 // Whether the AI should consider the move
 // The AI currently ignores resignations and claiming draws
 bool should_consider_move(chess_move move) {
     return move.type != move_type::resign && move.type != move_type::claim_draw;
 };
 
+score_t rank_board_nnue(chess_ai_state& ai_state, const board_state& board, player player) {
+    return ai_state.nnue_evaluator.evaluate(board);
+}
+
 // A positive result is good for player, negative is bad for player
-std::int32_t rank_board(const board_state& board, player player) {
-    std::int32_t board_value = 0;
+score_t rank_board_old(const chess_ai_state& ai_state, const board_state& board, player player) {
+    score_t board_value = 0;
 
     for(const auto& rank : board.pieces) {
         for(const auto& piece : rank) {
-            std::int32_t piece_value = 0;
+            score_t piece_value = 0;
 
             using enum piece_type;
 
@@ -62,7 +68,13 @@ std::int32_t rank_board(const board_state& board, player player) {
     return board_value;
 }
 
+score_t rank_board(chess_ai_state& ai_state, const board_state& board, player player) {
+    return rank_board_nnue(ai_state, board, player);
+}
+
 struct game_tree {
+    chess_ai_state* ai_state;
+
     board_state current_state;
 
     enum player player; // The maximizing player
@@ -75,22 +87,22 @@ struct game_tree {
         for(auto& move : get_valid_moves(current_state) | std::views::filter(should_consider_move)) {
             auto board = apply_move(current_state, move);
 
-            children.emplace_back(board, player, move);
+            children.emplace_back(ai_state, board, player, move);
         }
 
         return children;
     }
 
     // Rank the current state according to the minimax algorithm
-    std::int32_t minimax(std::size_t depth, bool maximizing, std::int32_t alpha, std::int32_t beta) {
+    score_t minimax(std::size_t depth, bool maximizing, score_t alpha, score_t beta) {
         if(depth == 0) {
-            return rank_board(current_state, player);
+            return rank_board(*ai_state, current_state, player);
         }
 
         auto children = get_children();
 
         if(maximizing) {
-            std::int32_t max_score = std::numeric_limits<decltype(max_score)>::min();
+            score_t max_score = std::numeric_limits<decltype(max_score)>::min();
 
             for(auto child : children) {
                 auto score = child.minimax(depth - 1, false, alpha, beta);
@@ -106,7 +118,7 @@ struct game_tree {
 
             return max_score;
         } else {
-            std::int32_t min_score = std::numeric_limits<decltype(min_score)>::max();
+            score_t min_score = std::numeric_limits<decltype(min_score)>::max();
 
             for(auto child : children) {
                 auto score = child.minimax(depth - 1, true, alpha, beta);
@@ -127,19 +139,19 @@ struct game_tree {
     board_state get_best_move(std::size_t depth) {
         assert(depth != 0);
 
-        std::int32_t alpha = std::numeric_limits<decltype(alpha)>::min();
-        std::int32_t beta = std::numeric_limits<decltype(beta)>::max();
+        score_t alpha = std::numeric_limits<decltype(alpha)>::min();
+        score_t beta = std::numeric_limits<decltype(beta)>::max();
 
         auto children = get_children();
 
-        std::vector<std::pair<game_tree*, std::int32_t>> children_with_scores;
+        std::vector<std::pair<game_tree*, score_t>> children_with_scores;
         children_with_scores.reserve(children.size());
 
         std::ranges::transform(children, std::back_inserter(children_with_scores), [=](game_tree& child) {
             return std::make_pair(&child, child.minimax(depth - 1, false, alpha, beta));
         });
 
-        auto projection = &std::pair<game_tree*, std::int32_t>::second;
+        auto projection = &std::pair<game_tree*, score_t>::second;
 
         return std::ranges::max_element(children_with_scores, {}, projection)->first->current_state;
     }
@@ -149,7 +161,7 @@ void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
     if(board.status != game_status::normal) throw std::runtime_error{"Game is over"};
     if(difficulty == 0) throw std::runtime_error{"Difficulty must be at least 1"};
 
-    game_tree tree{board, board.current_player};
+    game_tree tree{this, board, board.current_player};
 
     board = tree.get_best_move(difficulty);
 }
