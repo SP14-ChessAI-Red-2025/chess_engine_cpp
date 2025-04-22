@@ -9,11 +9,11 @@
 
 namespace chess::ai {
 
+chess_ai_state::chess_ai_state(const char* model_path)
 #ifdef NNUE_ENABLED
-chess_ai_state::chess_ai_state(const char* model_path) : nnue_evaluator{model_path} {
-
-}
+    : nnue_evaluator{model_path}
 #endif
+{}
 
 using score_t = double;
 
@@ -22,10 +22,6 @@ using score_t = double;
 bool should_consider_move(chess_move move) {
     return move.type != move_type::resign && move.type != move_type::claim_draw;
 };
-
-score_t rank_board_nnue(chess_ai_state& ai_state, const board_state& board, player player) {
-    return ai_state.nnue_evaluator.evaluate(board);
-}
 
 // A positive result is good for player, negative is bad for player
 score_t rank_board_old(const chess_ai_state& ai_state, const board_state& board, player player) {
@@ -69,7 +65,11 @@ score_t rank_board_old(const chess_ai_state& ai_state, const board_state& board,
 }
 
 score_t rank_board(chess_ai_state& ai_state, const board_state& board, player player) {
-    return rank_board_nnue(ai_state, board, player);
+#ifdef NNUE_ENABLED
+    return ai_state.nnue_evaluator.evaluate(board);
+#else
+    return rank_board_old(ai_state, board, player);
+#endif
 }
 
 struct game_tree {

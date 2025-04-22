@@ -8,9 +8,10 @@ namespace chess::ai {
 struct chess_ai_state {
 #ifdef NNUE_ENABLED
     NNUEEvaluator nnue_evaluator;
-
-    explicit chess_ai_state(const char* model_path);
 #endif
+
+    // model_path is unused if NNUE_ENABLE is not defined
+    explicit chess_ai_state(const char* model_path);
 
     void make_move(board_state& board, std::int32_t difficulty);
 };
