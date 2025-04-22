@@ -184,9 +184,9 @@ def convert_pt_to_onnx(pt_path, onnx_path, input_size, embed_dim, hidden1_dim, h
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manually convert a PyTorch NNUE model (.pt state_dict) to ONNX format.")
 
-    parser.add_argument("pt_input_path", type=str,
+    parser.add_argument("pt_input_path", type=str, default="../model/trained_nnue.pt",
                         help="Path to the input PyTorch state_dict file (.pt).")
-    parser.add_argument("onnx_output_path", type=str,
+    parser.add_argument("onnx_output_path", type=str, default="../model/trained_nnue.onnx",
                         help="Path to save the output ONNX model file (.onnx).")
 
     # Updated arguments to match the new NNUE structure based on the image
