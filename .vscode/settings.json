@@ -58,6 +58,16 @@
         "__string": "cpp",
         "deque": "cpp",
         "future": "cpp",
-        "ios": "cpp"
+        "ios": "cpp",
+        "condition_variable": "cpp",
+        "cstdarg": "cpp",
+        "map": "cpp",
+        "istream": "cpp",
+        "mutex": "cpp",
+        "span": "cpp",
+        "variant": "cpp",
+        "clocale": "cpp",
+        "semaphore": "cpp",
+        "text_encoding": "cpp"
     }
 }

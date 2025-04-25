@@ -164,8 +164,7 @@ def apply_move_api(): # WORKAROUND ADDED
 
             # 3. Call engine.apply_move - gets the address of the (potentially unchanged) C++ state
             new_state_address = engine.apply_move(move_address_to_apply) # <-- Gets potentially incorrect state address
-            time.sleep(0.1)
-
+            
             if new_state_address == 0:
                 app.logger.error("engine.apply_move returned NULL address.")
                 return jsonify({"error": "Engine failed to apply the move"}), 500
@@ -214,7 +213,7 @@ def trigger_ai_move(): # WORKAROUND ADDED
 
             # === Call engine.ai_move - gets the address of the (potentially unchanged) C++ state ===
             new_state_address = engine.ai_move(difficulty=difficulty) # <-- Gets potentially incorrect state address
-            time.sleep(0.1)
+    
             
             end_time = time.time()
             app.logger.info(f"AI move calculation attempt finished in {end_time - start_time:.2f} seconds.")
