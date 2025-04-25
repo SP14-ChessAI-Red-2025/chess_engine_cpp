@@ -22,21 +22,11 @@ class GameStatus: NORMAL=0; DRAW=1; CHECKMATE=2; RESIGNED=3; DRAW_BY_REPETITION=
 # --- C Definitions ---
 # Use ctypedef to alias the C++ structs/enums for easier use in Cython
 cdef extern from "chess_cpp/chess_rules.hpp" namespace "chess":
-    # --- DECLARE C++ types using their C++ names inside the extern block ---
-    ctypedef struct board_position:
-        # uint8_t rank
-        # uint8_t file
-        pass # Often enough just to declare the struct type
-    ctypedef struct piece:
-        # piece_type type       # Example C++ members
-        # player piece_player
-        pass
-    ctypedef struct chess_move:
-        pass
-    ctypedef struct board_state:
-        pass
-    # Assume C++ types compatible with int/char/etc.
-    ctypedef int piece_type # Or char, uint8_t etc. matching C++ definition
+    ctypedef struct board_position: pass
+    ctypedef struct piece: pass
+    ctypedef struct chess_move: pass
+    ctypedef struct board_state: pass
+    ctypedef int piece_type
     ctypedef int move_type
     ctypedef int player
     ctypedef int game_status
@@ -131,25 +121,29 @@ cdef class ChessMove:
 cdef class ChessEngine:
     cdef void* c_engine_handle
     cdef cython.bint _handle_valid
+    cdef CChessMove* c_moves_buffer
+    cdef size_t c_moves_buffer_capacity
 
     def __cinit__(self, str library_path, str model_path):
+        cdef bytes model_path_bytes = model_path.encode('utf-8')
+        cdef const char* c_model_path = model_path_bytes
         self.c_engine_handle = NULL
         self._handle_valid = False
         print(f"Cython ChessEngine: Initializing...")
-        cdef bytes model_path_bytes = model_path.encode('utf-8')
-        cdef const char* c_model_path = model_path_bytes
+        
+        self.c_moves_buffer = NULL
+        self.c_moves_buffer_capacity = 256 # Default capacity, can be adjusted
         try:
             self.c_engine_handle = engine_create(c_model_path)
             if self.c_engine_handle == NULL:
-                 raise MemoryError("engine_create returned NULL")
+                raise MemoryError("engine_create returned NULL")
             self._handle_valid = True
             print(f"Cython ChessEngine: Init OK (handle: {<Py_ssize_t>self.c_engine_handle}).")
         except Exception as e:
-             print(f"Cython ChessEngine: Error during __cinit__/engine_create: {e}", file=sys.stderr)
-             traceback.print_exc()
-             self.c_engine_handle = NULL
-             self._handle_valid = False
-             raise
+            print(f"Cython ChessEngine: Error during __cinit__/engine_create: {e}", file=sys.stderr)
+            if self._handle_valid and self.c_engine_handle != NULL:
+                with nogil: engine_destroy(self.c_engine_handle)
+            raise # Re-raise error
 
     def __dealloc__(self):
         if self._handle_valid and self.c_engine_handle != NULL:
@@ -178,61 +172,44 @@ cdef class ChessEngine:
         print(f"[DEBUG CYTHON] Returning address: {address}", file=sys.stderr)
         return address
 
-    def get_valid_moves(self):
-        """Returns a list of valid ChessMove objects."""
+    def get_valid_moves_address_count(self):
+        """Calls C API to fill internal buffer, returns buffer address and move count."""
         self._check_handle()
-        cdef size_t buffer_capacity = 256
-        cdef CChessMove* c_moves_buffer = <CChessMove*>malloc(sizeof(CChessMove) * buffer_capacity)
-        if c_moves_buffer == NULL: raise MemoryError("Failed to allocate move buffer.")
         cdef size_t num_moves_found = 0
-        cdef size_t i
-        py_moves = []
-        try:
-            num_moves_found = engine_get_valid_moves(self.c_engine_handle, c_moves_buffer, buffer_capacity)
-            if num_moves_found > buffer_capacity:
-                 print(f"Warning: Num moves ({num_moves_found}) > buffer ({buffer_capacity}).", file=sys.stderr)
-                 num_moves_found = buffer_capacity
-            for i in range(num_moves_found):
-                 c_move = c_moves_buffer[i]
-                 start_pos = BoardPosition(c_move.start_position.rank, c_move.start_position.file)
-                 target_pos = BoardPosition(c_move.target_position.rank, c_move.target_position.file)
-                 py_move = ChessMove(<int>c_move.type, start_pos, target_pos, <int>c_move.promotion_target)
-                 py_moves.append(py_move)
-        finally:
-            free(c_moves_buffer)
-        return py_moves
+        print("[DEBUG CYTHON] Entering get_valid_moves_address_count", file=sys.stderr) # Debug
 
-    def apply_move(self, ChessMove move):
-        """Applies the given move and returns the new board state dictionary."""
-        self._check_handle()
-        if not isinstance(move, ChessMove): raise TypeError("Requires ChessMove object.")
-        cdef CBoardState c_new_state
-        cdef cython.bint success = 0
-        try:
-             with nogil: success = engine_apply_move(self.c_engine_handle, &move.c_move, &c_new_state)
-             if not success: raise ValueError("engine_apply_move returned false.")
-             # Convert c_new_state to py_state dictionary
-             py_state = {}
-             py_pieces = []
-             for r in range(8):
-                 row_list = []
-                 for f in range(8):
-                     c_piece = c_new_state.pieces[r][f]
-                     row_list.append({'type': <int>c_piece.type, 'player': <int>c_piece.piece_player})
-                 py_pieces.append(row_list)
-             py_state['pieces'] = py_pieces
-             py_state['current_player'] = <int>c_new_state.current_player
-             py_state['can_castle'] = [bool(c_new_state.can_castle[i]) for i in range(4)]
-             py_state['en_passant_valid'] = [bool(c_new_state.en_passant_valid[i]) for i in range(16)]
-             py_state['turns_since_last_capture_or_pawn'] = c_new_state.turns_since_last_capture_or_pawn
-             py_state['status'] = <int>c_new_state.status
-             py_state['can_claim_draw'] = bool(c_new_state.can_claim_draw)
-             py_state['in_check'] = [bool(c_new_state.in_check[i]) for i in range(2)]
-             return py_state
-        except Exception as e:
-             print(f"Cython apply_move error: {e}", file=sys.stderr)
-             traceback.print_exc()
-             raise
+        # Call C function to fill the engine's internal buffer
+        num_moves_found = engine_get_valid_moves(
+            self.c_engine_handle,
+            self.c_moves_buffer, # Use the buffer owned by the object
+            self.c_moves_buffer_capacity
+        )
+
+        # Optional: Add logic here to reallocate buffer if num_moves_found > capacity
+        # For now, we assume capacity is sufficient or C func handles overflow gracefully.
+        if num_moves_found > self.c_moves_buffer_capacity:
+            print(f"[WARNING CYTHON] Moves found ({num_moves_found}) exceeds buffer capacity ({self.c_moves_buffer_capacity}). Truncating.", file=sys.stderr)
+            num_moves_found = self.c_moves_buffer_capacity
+
+        # Return the address of the buffer and the count
+        address = <ptrdiff_t>self.c_moves_buffer
+        count = <int>num_moves_found # Cast size_t to int for Python
+        print(f"[DEBUG CYTHON] Returning move buffer address={address}, count={count}", file=sys.stderr) # Debug
+        return address, count
+
+    def apply_move(self, ChessMove move): # This still takes a Cython ChessMove object? We might need to change this too.
+         # TODO: This method might need refactoring if the Python side now
+         # works primarily with ctypes moves or dictionaries representing moves.
+         # For now, assuming it can still somehow get a CChessMove struct.
+         self._check_handle()
+         if not isinstance(move, ChessMove): raise TypeError("Requires ChessMove object.")
+         cdef CBoardState c_new_state # Need to define CBoardState here
+         cdef cython.bint success = 0
+         # engine_apply_move expects const CChessMove* - getting it from 'move' (Cython obj)
+         with nogil: success = engine_apply_move(self.c_engine_handle, &move.c_move, &c_new_state)
+         if not success: raise ValueError("engine_apply_move returned false.")
+         # Return new state - use pointer version?
+         return <ptrdiff_t>&c_new_state # TEMPORARY - returning address of stack var is BAD! Needs fixing.
 
     def ai_move(self, int difficulty):
         """Triggers the AI calculation (blocking) and returns the new board state dict."""
@@ -270,23 +247,11 @@ cdef class ChessEngine:
              traceback.print_exc()
              raise
 
-    def move_to_str(self, ChessMove move):
-        """Converts a ChessMove object to its string representation (e.g., SAN or UCI)."""
-        self._check_handle()
-        if not isinstance(move, ChessMove): raise TypeError("Requires ChessMove object.")
-        cdef char buffer[16]
-        cdef cython.bint success = 0
-        memset(buffer, 0, sizeof(buffer))
-        try:
-             success = engine_move_to_str(self.c_engine_handle, &move.c_move, buffer, sizeof(buffer))
-             if not success:
-                 print("Warning: engine_move_to_str failed or buffer was too small.", file=sys.stderr)
-                 return buffer.decode('utf-8', errors='ignore')[:sizeof(buffer)-1]
-        except Exception as e:
-             print(f"Cython move_to_str error: {e}", file=sys.stderr)
-             traceback.print_exc()
-             return "Error"
-        return buffer.decode('utf-8', errors='replace')
+    def move_to_str(self, move_address, move_type, start_rank, start_file, target_rank, target_file, promotion): # Example: pass data instead of object
+         """Converts move data (obtained via ctypes) to string."""
+         # TODO: Refactor this to accept raw data or a ctypes object/address
+         # For now, it's incompatible with the new approach.
+         pass # Placeholder
 
     # <<< NEW METHOD TO EXPOSE CANCELLATION >>>
     def stop_search(self):
