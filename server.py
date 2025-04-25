@@ -6,12 +6,10 @@ import threading # Keep for Lock
 import time
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-# --- ADD ctypes ---
 from ctypes import (
     Structure, POINTER, c_void_p, c_size_t, c_int8, c_uint8, c_int32,
     c_bool, cast, sizeof, pointer # Added 'pointer'
 )
-# --- END ctypes ---
 
 # --- Path Setup ---
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -64,8 +62,7 @@ class CtypesBoardState(Structure):
         ("current_player", c_int8),                   # 1 * 1 = 1 byte
         ("status", c_int8),                           # 1 * 1 = 1 byte
         ("can_claim_draw", c_bool),                   # 1 * 1 = 1 byte
-        # Verify if padding exists/is needed based on C++ struct definition and alignment
-    ]
+        ("_padding_", c_uint8 * 3)]
 # --- END ctypes Structures ---
 
 
