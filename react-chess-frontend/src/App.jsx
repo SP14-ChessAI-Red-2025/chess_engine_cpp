@@ -189,16 +189,22 @@ function App() {
 
   // --- Effect to Automatically Trigger AI Move (Keep as is) ---
   useEffect(() => {
-     if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) return;
+    // Guard conditions - should prevent running if loading or game over
+    if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) return;
+
+    // Determine if AI should move based on mode and current player in the state
     const isAIsTurn =
       (gameMode === GameMode.AI_VS_AI) ||
-      (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) ||
-      (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE);
+      (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) || // AI is Black (1)
+      (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE); // AI is White (0)
+
+    // If it's determined to be the AI's turn...
     if (isAIsTurn) {
-      // Add a small delay before triggering AI for better UX if desired
-      const timeoutId = setTimeout(triggerAiMove, 500); // e.g., 500ms delay
-      return () => clearTimeout(timeoutId);
+      // Trigger AI after a short delay
+      const timeoutId = setTimeout(triggerAiMove, 500); // 500ms delay
+      return () => clearTimeout(timeoutId); // Cleanup timeout on unmount/re-run
     }
+  // Dependencies: This effect re-runs if any of these change
   }, [boardState, gameMode, isLoading, triggerAiMove]);
 
 
