@@ -183,13 +183,7 @@ cdef class ChessEngine:
             row_list = []
             for f in range(8):
                 try:
-<<<<<<< Updated upstream
-                    # --- MODIFIED LINE: Access via pointer directly ---
-                    c_piece = c_state_ptr.pieces[r][f]
-                    # --- END MODIFICATION ---
-=======
                     c_piece = c_state_ptr[0].pieces[r][f]
->>>>>>> Stashed changes
                     row_list.append({'type': <int>c_piece.type, 'player': <int>c_piece.piece_player})
                 except Exception as e:
                     # Keep detailed error printing just in case
