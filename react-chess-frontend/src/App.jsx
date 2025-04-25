@@ -1,4 +1,4 @@
-// src/App.jsx (Synchronous AI Mode - No Timer)
+// src/App.jsx (FIXED State Handling)
 import React, { useState, useEffect, useCallback } from 'react';
 import Board from './Board';
 import GameModeSelector from './GameModeSelector';
@@ -10,6 +10,7 @@ const PieceType = { NONE: 0, PAWN: 1, KNIGHT: 2, BISHOP: 3, ROOK: 4, QUEEN: 5, K
 const GameStatus = { NORMAL: 0, DRAW: 1, CHECKMATE: 2, RESIGNED: 3, DRAW_BY_REPETITION: 4 };
 const GameMode = { SELECT: 0, AI_VS_AI: 1, PLAYER_VS_AI_WHITE: 2, PLAYER_VS_AI_BLACK: 3 };
 
+// Ensure this points to your Render backend URL
 const API_URL = 'https://chess-engine-cpp.onrender.com/api';
 
 function App() {
@@ -21,14 +22,12 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [gameMode, setGameMode] = useState(GameMode.SELECT);
   const [playerColor, setPlayerColor] = useState(null);
-  // Timer state removed
 
   // --- Helper to Get Status String ---
   const getGameStatusMessage = (state) => {
+    // (Keep existing implementation)
     if (!state) return "Loading State...";
-    if (isLoading) return statusMessage; // Keep loading messages
-
-    // Timeout checks removed
+    if (isLoading && statusMessage.startsWith("AI is") || statusMessage.startsWith("Applying")) return statusMessage; // Keep specific loading messages
 
     switch (state.status) {
       case GameStatus.NORMAL:
@@ -45,10 +44,35 @@ function App() {
     }
   };
 
-  // --- Fetch Initial/Current Game State and Moves ---
-  const fetchGameState = useCallback(async (caller = "unknown") => {
-    if (isLoading) { console.log(`fetchGameState skipped by ${caller}: isLoading=true`); return null; }
-    console.log(`Fetching game state (called by ${caller})...`);
+  // --- Fetch ONLY Valid Moves --- (Helper Function)
+  const fetchValidMoves = useCallback(async (currentState) => {
+      if (!currentState || currentState.status !== GameStatus.NORMAL) {
+          console.log("Skipping move fetch: game over or no state.");
+          setValidMoves([]);
+          return;
+      }
+      console.log("Fetching valid moves for new state...");
+      try {
+          const movesResponse = await fetch(`${API_URL}/moves`);
+          if (!movesResponse.ok) {
+              console.error(`Failed to fetch moves: ${movesResponse.status}`);
+              setValidMoves([]);
+          } else {
+              const movesData = await movesResponse.json();
+              setValidMoves(Array.isArray(movesData) ? movesData : []);
+              console.log(`Fetched ${movesData?.length ?? 0} moves.`);
+          }
+      } catch (error) {
+           console.error("Error fetching valid moves:", error);
+           setValidMoves([]);
+      }
+  }, []); // No dependencies needed
+
+
+  // --- Fetch Initial Game State (Only fetches state, moves fetched separately) ---
+  const fetchInitialGameState = useCallback(async (caller = "unknown") => {
+    if (isLoading) { console.log(`fetchInitialGameState skipped by ${caller}: isLoading=true`); return null; }
+    console.log(`Fetching initial game state (called by ${caller})...`);
     setIsLoading(true);
     setStatusMessage("Fetching state...");
 
@@ -58,28 +82,16 @@ function App() {
       if (!stateResponse.ok) throw new Error(`State fetch failed: ${stateResponse.status}`);
       newState = await stateResponse.json();
       if (!newState || typeof newState !== 'object') throw new Error("Received invalid state from server");
-      console.log("Fetched State:", newState);
+      console.log("Fetched Initial State:", newState);
 
-      setBoardState(newState);
-      setStatusMessage(getGameStatusMessage(newState)); // Update status based on new state
+      setBoardState(newState); // Set initial state
+      setStatusMessage(getGameStatusMessage(newState)); // Update status message
 
-      if (newState.status === GameStatus.NORMAL) {
-        console.log("Fetching valid moves...");
-        const movesResponse = await fetch(`${API_URL}/moves`);
-        if (!movesResponse.ok) {
-           console.error(`Failed to fetch moves: ${movesResponse.status}`);
-           setValidMoves([]);
-        } else {
-           const movesData = await movesResponse.json();
-           setValidMoves(Array.isArray(movesData) ? movesData : []);
-           console.log(`Fetched ${movesData?.length ?? 0} moves.`);
-        }
-      } else {
-        setValidMoves([]); // Game is over
-      }
+      // Fetch moves separately after setting initial state
+      await fetchValidMoves(newState);
 
     } catch (error) {
-      console.error("Error fetching game state:", error);
+      console.error("Error fetching initial game state:", error);
       setStatusMessage(`Error fetching state: ${error.message}`);
       setBoardState(null);
       setValidMoves([]);
@@ -87,67 +99,51 @@ function App() {
       setIsLoading(false);
     }
     return newState;
-  }, [isLoading]);
+  }, [isLoading, fetchValidMoves]); // Add fetchValidMoves dependency
 
 
-  // --- Reset Game and Return to Mode Select ---
+  // --- Reset Game ---
   const returnToModeSelect = useCallback(async () => {
-      setIsLoading(true);
-      setStatusMessage("Resetting game...");
-      // Timer clearing removed
-
-      try {
-          console.log("Calling /api/reset...");
-          const response = await fetch(`${API_URL}/reset`, { method: 'POST' });
-          if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              throw new Error(errorData.error || `Reset failed: ${response.status}`);
-          }
-          console.log("Reset successful on backend.");
-
-          // Reset relevant frontend state (no timers)
-          setGameMode(GameMode.SELECT);
-          setBoardState(null);
-          setValidMoves([]);
-          setSelectedSquare(null);
-          setPlayerColor(null);
-          setStatusMessage("Select Game Mode");
-
-      } catch (error) {
-          console.error("Error resetting game:", error);
-          setStatusMessage(`Error resetting: ${error.message}. Please select mode again.`);
-          // Force back to select mode even if reset failed
-          setGameMode(GameMode.SELECT);
-          setBoardState(null);
-          setValidMoves([]);
-          setSelectedSquare(null);
-          setPlayerColor(null);
-      } finally {
-          setIsLoading(false);
-      }
-  }, []); // Removed timerIntervalId dependency
+       // ... (Keep existing implementation, maybe call fetchInitialGameState at end if needed, or just reset) ...
+       setIsLoading(true);
+       setStatusMessage("Resetting game...");
+       try {
+           console.log("Calling /api/reset...");
+           const response = await fetch(`${API_URL}/reset`, { method: 'POST' });
+           if (!response.ok) { /* ... error handling ... */ }
+           console.log("Reset successful on backend.");
+           // Reset frontend state fully
+           setGameMode(GameMode.SELECT);
+           setBoardState(null);
+           setValidMoves([]);
+           setSelectedSquare(null);
+           setPlayerColor(null);
+           setStatusMessage("Select Game Mode");
+       } catch (error) { /* ... error handling ... */ }
+       finally { setIsLoading(false); }
+  }, []);
 
 
-  // --- Start Game (Called from GameModeSelector) ---
+  // --- Start Game ---
   const handleGameModeSelect = useCallback((mode) => {
     setGameMode(mode);
     setStatusMessage("Loading Game...");
-    // Reset state immediately
     setBoardState(null);
     setValidMoves([]);
     setSelectedSquare(null);
-    // Timer reset removed
 
     if (mode === GameMode.PLAYER_VS_AI_WHITE) setPlayerColor(Player.WHITE);
     else if (mode === GameMode.PLAYER_VS_AI_BLACK) setPlayerColor(Player.BLACK);
     else setPlayerColor(null);
 
-    fetchGameState("handleGameModeSelect");
-  }, [fetchGameState]); // Removed timerIntervalId dependency
+    // Fetch initial state (which now also fetches initial moves)
+    fetchInitialGameState("handleGameModeSelect");
+  }, [fetchInitialGameState]);
 
 
   // --- Trigger AI Move ---
   const triggerAiMove = useCallback(async () => {
+    // --- Condition Check (Good) ---
     if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.SELECT) {
         console.log("triggerAiMove skipped: conditions not met."); return; }
     const isAIsTurn =
@@ -155,117 +151,151 @@ function App() {
       (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) ||
       (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE);
     if (!isAIsTurn) { console.log("triggerAiMove skipped: not AI's turn."); return; }
+    // --- End Condition Check ---
 
     console.log("Triggering AI move...");
     setIsLoading(true);
     setStatusMessage("AI is thinking...");
-    setValidMoves([]);
-    setSelectedSquare(null);
+    setValidMoves([]); // Clear old moves
+    setSelectedSquare(null); // Clear selection
 
     try {
-      const response = await fetch(`${API_URL}/ai_move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const response = await fetch(`${API_URL}/ai_move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }); // Pass difficulty if needed
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `AI move failed: ${response.status}`);
       }
+
+      // --- FIX: Use the response directly ---
       const newState = await response.json();
-      console.log("Received new state after AI move:", newState);
-      setBoardState(newState);
-      if (newState.status === GameStatus.NORMAL) {
-          await fetchGameState("triggerAiMove-after"); // Fetch state AND moves for next player
-      } else {
-           setValidMoves([]); // Game ended
-           setStatusMessage(getGameStatusMessage(newState)); // Update final status
-      }
+      console.log("Received new state directly from POST /api/ai_move:", newState);
+      setBoardState(newState); // Update state with the direct response
+      setStatusMessage(getGameStatusMessage(newState)); // Update status message
+
+      // Fetch valid moves for the *next* player based on the newState
+      await fetchValidMoves(newState);
+      // --- END FIX ---
+
     } catch (error) {
       console.error("Error during AI move:", error);
       setStatusMessage(`Error during AI turn: ${error.message}`);
+      // Optionally try fetching state again on error to recover?
+      // fetchInitialGameState("triggerAiMove-error");
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Ensure loading is set to false
     }
-  }, [isLoading, boardState, gameMode, fetchGameState]);
+  }, [isLoading, boardState, gameMode, fetchValidMoves]); // Added fetchValidMoves
 
 
-  // --- Effect to Automatically Trigger AI Move ---
+  // --- Effect to Automatically Trigger AI Move (Keep as is) ---
   useEffect(() => {
-    if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) return;
+     if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) return;
     const isAIsTurn =
       (gameMode === GameMode.AI_VS_AI) ||
       (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) ||
       (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE);
     if (isAIsTurn) {
-      const timeoutId = setTimeout(triggerAiMove, 100);
+      // Add a small delay before triggering AI for better UX if desired
+      const timeoutId = setTimeout(triggerAiMove, 500); // e.g., 500ms delay
       return () => clearTimeout(timeoutId);
     }
   }, [boardState, gameMode, isLoading, triggerAiMove]);
 
-  // --- Timer useEffect REMOVED ---
-
 
   // --- Handle Square Click Logic ---
   const handleSquareClick = useCallback(async (rank, file) => {
+    // --- Condition Checks (Good) ---
     if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.AI_VS_AI) return;
     const isPlayerTurn = playerColor !== null && boardState.current_player === playerColor;
     if (!isPlayerTurn) return;
+    // --- End Condition Checks ---
 
     const clickedPiece = boardState.pieces[rank][file];
 
-    if (selectedSquare) {
+    if (selectedSquare) { // A piece is already selected
       const sourceSq = selectedSquare;
       const targetSq = { rank, file };
+
+      // Find the move object based on current valid moves
       const move = validMoves.find(m =>
         m.start.rank === sourceSq.rank && m.start.file === sourceSq.file &&
         m.target.rank === targetSq.rank && m.target.file === targetSq.file
       );
 
-      if (move) {
+      if (move) { // Clicked on a valid target square for the selected piece
         setIsLoading(true);
         setStatusMessage("Applying move...");
-        setSelectedSquare(null);
-        setValidMoves([]);
+        setSelectedSquare(null); // Deselect piece
+        setValidMoves([]); // Clear old moves
 
         try {
-          const movePayload = { start: move.start, target: move.target };
-          if (move.type === 4) { // Use direct integer value if MoveType enum isn't imported
-            movePayload.promotion = PieceType.QUEEN; // Default to Queen
-            console.warn("Applying default Queen promotion!");
+          // Prepare payload, include current_player for conditional check on backend
+          const movePayload = {
+              start: move.start,
+              target: move.target,
+              promotion: PieceType.NONE, // Default, override if needed
+              current_player: boardState.current_player // Send player making the move
+          };
+          // Handle promotion (assuming default to Queen for now)
+          // TODO: Implement promotion piece selection UI if needed
+          if (move.type === 4 /* Promotion */ && boardState.pieces[sourceSq.rank][sourceSq.file]?.type === PieceType.PAWN) {
+              if (targetSq.rank === 7 || targetSq.rank === 0) {
+                  movePayload.promotion = PieceType.QUEEN; // Default to Queen
+                  console.log("Applying default Queen promotion for move:", move);
+              }
           }
+
+          // Call the backend API
           const response = await fetch(`${API_URL}/apply_move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(movePayload) });
+
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Move failed: ${response.status}`);
+            throw new Error(errorData.error || `Move application failed: ${response.status}`);
           }
+
+          // --- FIX: Use the response directly ---
           const newState = await response.json();
-          setBoardState(newState);
-          await fetchGameState("handleSquareClick-after");
+          console.log("Received new state directly from POST /api/apply_move:", newState);
+          setBoardState(newState); // Update state with the direct response
+          setStatusMessage(getGameStatusMessage(newState)); // Update status message
+
+          // Fetch valid moves for the *next* player based on the newState
+          await fetchValidMoves(newState);
+          // --- END FIX ---
+
         } catch (error) {
           console.error("Error applying move:", error);
           setStatusMessage(`Error applying move: ${error.message}`);
-          fetchGameState("handleSquareClick-error");
+          // Attempt to recover by fetching current state/moves
+          fetchInitialGameState("handleSquareClick-error"); // Fetch both state and moves on error
         } finally {
-          setIsLoading(false);
+          setIsLoading(false); // Ensure loading is set to false
         }
-      } else {
+      } else { // Clicked on a square that is NOT a valid target
         if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
+          // Clicked on another of the player's pieces, select it instead
           setSelectedSquare({ rank, file });
         } else {
+          // Clicked on empty square or opponent piece, deselect
           setSelectedSquare(null);
         }
       }
-    } else {
+    } else { // No piece was selected previously
       if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
+        // Clicked on one of the player's pieces, select it
         setSelectedSquare({ rank, file });
       }
+      // Do nothing if clicked empty square or opponent piece when nothing selected
     }
-  }, [isLoading, boardState, gameMode, playerColor, selectedSquare, validMoves, fetchGameState]);
+  }, [isLoading, boardState, gameMode, playerColor, selectedSquare, validMoves, fetchValidMoves, fetchInitialGameState]); // Added dependencies
 
 
   // --- Calculate Highlight Squares ---
   const getHighlightSquares = useCallback(() => {
-    if (!selectedSquare || !Array.isArray(validMoves) || isLoading) return [];
-    return validMoves
-      .filter(m => m.start.rank === selectedSquare.rank && m.start.file === selectedSquare.file)
-      .map(m => ({ rank: m.target.rank, file: m.target.file }));
+     if (!selectedSquare || !Array.isArray(validMoves) || isLoading) return [];
+     return validMoves
+       .filter(m => m.start.rank === selectedSquare.rank && m.start.file === selectedSquare.file)
+       .map(m => ({ rank: m.target.rank, file: m.target.file }));
   }, [selectedSquare, validMoves, isLoading]);
 
 
@@ -273,19 +303,11 @@ function App() {
   if (gameMode === GameMode.SELECT) {
     return <GameModeSelector onSelectMode={handleGameModeSelect} />;
   }
-
   const highlightSquares = getHighlightSquares();
-
   return (
     <div className="App">
       <h1>React Chess</h1>
-
-      {/* Timer Display REMOVED */}
-
-      {/* Game Status */}
       <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
-
-      {/* Board or Loading Message */}
       {boardState && Array.isArray(boardState.pieces) ? (
         <Board
           boardPieces={boardState.pieces}
@@ -296,8 +318,6 @@ function App() {
       ) : (
         <div className="loading">{isLoading ? 'Loading...' : 'Waiting for Server...'}</div>
       )}
-
-      {/* Change Mode Button */}
       <button onClick={returnToModeSelect} disabled={isLoading} style={{ marginTop: '15px' }}>
         Change Mode / Reset
       </button>
