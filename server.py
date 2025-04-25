@@ -8,7 +8,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from ctypes import (
     Structure, POINTER, c_void_p, c_size_t, c_int8, c_uint8, c_int32,
-    c_bool, cast, sizeof, pointer # Added 'pointer'
+    c_bool, cast, sizeof, pointer, addressof
 )
 
 # --- Path Setup ---
@@ -116,24 +116,61 @@ def moves_to_list_ctypes(move_buffer_address, num_moves):
             # Access the current move struct using pointer indexing
             current_move = move_ptr[i]
 
+            # --- Get Move String (Requires engine access, potential lock needed if done outside) ---
+            # Calculate address of the specific move
+            current_move_addr = move_buffer_address + i * sizeof(CtypesChessMove)
+            san = engine.move_to_str(current_move_addr) if engine else "ERR!"
+            # --- End Get Move String ---
+
             # Convert ctypes data to dictionary
-            # TODO: Implement SAN generation if needed. Requires engine access.
-            # Might need a separate Cython call: engine.get_san_for_move_data(...)
             move_dict = {
                 "type": current_move.type,
                 "start": {"rank": current_move.start_position.rank, "file": current_move.start_position.file},
                 "target": {"rank": current_move.target_position.rank, "file": current_move.target_position.file},
                 "promotion": current_move.promotion_target,
-                "san": "N/A" # Placeholder for SAN string
+                "san": san # Use the generated SAN string
             }
             move_list.append(move_dict)
-        app.logger.info(f"Successfully converted {len(move_list)} moves from ctypes buffer.")
+        # app.logger.info(f"Successfully converted {len(move_list)} moves from ctypes buffer.")
 
     except Exception as e:
         app.logger.error(f"Error processing ctypes move buffer: {e}", exc_info=True)
         return [] # Return empty list on error
 
     return move_list
+
+def state_address_to_dict(address):
+    """Converts a C board_state address to a Python dictionary."""
+    if address == 0:
+        app.logger.error("state_address_to_dict received NULL address.")
+        return None
+    try:
+        state_ptr = cast(address, POINTER(CtypesBoardState))
+        if not state_ptr:
+            app.logger.error("state_address_to_dict: ctypes.cast resulted in NULL pointer.")
+            return None
+        c_state = state_ptr.contents
+        py_state = {}
+        py_pieces = []
+        for r in range(8):
+            row_list = []
+            for f in range(8):
+                c_piece = c_state.pieces[r][f]
+                row_list.append({'type': c_piece.type, 'player': c_piece.piece_player})
+            py_pieces.append(row_list)
+
+        py_state['pieces'] = py_pieces
+        py_state['current_player'] = c_state.current_player
+        py_state['can_castle'] = list(c_state.can_castle)
+        py_state['in_check'] = list(c_state.in_check)
+        py_state['en_passant_valid'] = list(c_state.en_passant_valid)
+        py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn
+        py_state['status'] = c_state.status
+        py_state['can_claim_draw'] = c_state.can_claim_draw
+        return py_state
+    except Exception as e:
+        app.logger.error(f"Error converting C state address {address} to dict: {e}", exc_info=True)
+        return None
 
 # --- API Endpoints ---
 
@@ -147,54 +184,17 @@ def get_state():
     try:
         address = 0
         with engine_lock:
-             # Call the Cython property to get the address
              address = engine.board_state_address # Get address as integer
 
         if address == 0:
              app.logger.error("/api/state: engine.board_state_address returned 0 (NULL ptr)")
              return jsonify({"error": "Engine state pointer is unavailable"}), 500
-        app.logger.info(f"/api/state: Received address: {address}") # Log address
+        # app.logger.info(f"/api/state: Received address: {address}") # Log address
 
-        # --- Convert address to ctypes pointer ---
-        try:
-            state_ptr = cast(address, POINTER(CtypesBoardState))
-            if not state_ptr:
-                 app.logger.error("/api/state: ctypes.cast resulted in a NULL pointer")
-                 return jsonify({"error": "Failed to cast engine state pointer"}), 500
-            # Access the data via pointer.contents
-            c_state = state_ptr.contents
-            # app.logger.info("/api/state: Successfully accessed pointer.contents") # Optional log
-        except Exception as cast_error:
-             app.logger.error(f"Error casting or accessing ctypes pointer in /api/state: {cast_error}", exc_info=True)
-             return jsonify({"error": "Failed to interpret engine state pointer"}), 500
-        # --- END Conversion ---
+        py_state = state_address_to_dict(address)
 
-        # --- Build dictionary in Python using ctypes data ---
-        py_state = {}
-        py_pieces = []
-        try:
-            # app.logger.info("/api/state: Starting dict conversion...") # Optional log
-            for r in range(8):
-                row_list = []
-                for f in range(8):
-                    c_piece = c_state.pieces[r][f]
-                    row_list.append({'type': c_piece.type, 'player': c_piece.piece_player})
-                py_pieces.append(row_list)
-
-            py_state['pieces'] = py_pieces
-            py_state['current_player'] = c_state.current_player
-            py_state['can_castle'] = list(c_state.can_castle)
-            py_state['in_check'] = list(c_state.in_check)
-            py_state['en_passant_valid'] = list(c_state.en_passant_valid)
-            py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn
-            py_state['status'] = c_state.status
-            py_state['can_claim_draw'] = c_state.can_claim_draw
-            # app.logger.info("/api/state: Finished dict conversion.") # Optional log
-
-        except Exception as conversion_error:
-            app.logger.error(f"Error converting ctypes state to dict in /api/state: {conversion_error}", exc_info=True)
-            return jsonify({"error": "Failed to convert engine state data"}), 500
-        # --- END Building Dictionary ---
+        if py_state is None:
+             return jsonify({"error": "Failed to read or convert engine state"}), 500
 
         return jsonify(py_state)
 
@@ -214,13 +214,13 @@ def get_valid_moves_api():
         address = 0
         count = 0
         with engine_lock:
-            # Call the new Cython method
+            # Call the new Cython method to get buffer address and count
             address, count = engine.get_valid_moves_address_count()
+            # Use the helper function to convert the buffer data
+            # Engine lock is needed because move_to_str is called inside helper
+            valid_moves_list = moves_to_list_ctypes(address, count)
 
-        app.logger.info(f"/api/moves: Got address={address}, count={count}")
-
-        # Use the new helper function to convert the buffer data
-        valid_moves_list = moves_to_list_ctypes(address, count)
+        # app.logger.info(f"/api/moves: Got address={address}, count={count}, list_len={len(valid_moves_list)}")
 
         return jsonify(valid_moves_list)
 
@@ -231,20 +231,116 @@ def get_valid_moves_api():
 
 @app.route('/api/apply_move', methods=['POST'])
 def apply_move_api():
-    """Applies a player move and returns the new state."""
-    # --- Placeholder - Needs Implementation ---
-    # This endpoint needs to be refactored to work with the ctypes approach.
-    # See previous discussion for options on how to handle this:
-    # 1. New Cython function taking raw move data.
-    # 2. Construct ctypes.ChessMove here and pass its address to Cython.
-    # 3. Find the move address in the buffer from get_valid_moves_address_count and pass that.
+    """
+    Applies a player move received from the frontend.
+    Finds the matching C move in the engine's buffer and passes its address
+    to the Cython apply_move function. Returns the new board state.
+    """
     if not engine:
         app.logger.error("/api/apply_move: Engine not initialized")
         return jsonify({"error": "Chess engine not initialized"}), 500
 
-    app.logger.error("FATAL: /api/apply_move endpoint is not yet fully implemented for the ctypes approach!")
-    return jsonify({"error": "Apply move functionality requires update"}), 501 # 501 Not Implemented
-    # --- End Placeholder ---
+    # --- Get Move Data from JSON ---
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 400
+
+    data = request.json
+    if not isinstance(data, dict):
+         return jsonify({"error": "Invalid JSON format, expected an object"}), 400
+
+    try:
+        start_data = data['start'] # e.g., {'rank': 1, 'file': 4}
+        target_data = data['target'] # e.g., {'rank': 3, 'file': 4}
+        # Handle promotion - it might be missing or None for non-promotion moves
+        promotion_data = data.get('promotion', PieceType.NONE)
+        if promotion_data is None: # Treat None as no promotion
+            promotion_data = PieceType.NONE
+
+        start_rank = int(start_data['rank'])
+        start_file = int(start_data['file'])
+        target_rank = int(target_data['rank'])
+        target_file = int(target_data['file'])
+        promotion_piece = int(promotion_data)
+
+        # Basic validation
+        if not (0 <= start_rank < 8 and 0 <= start_file < 8 and
+                0 <= target_rank < 8 and 0 <= target_file < 8 and
+                0 <= promotion_piece <= 6):
+            raise ValueError("Invalid rank/file/promotion data")
+
+    except (KeyError, TypeError, ValueError) as e:
+        app.logger.error(f"Invalid move data received in /api/apply_move: {e}. Data: {data}")
+        return jsonify({"error": f"Invalid move data format: {e}"}), 400
+    # --- End Get Move Data ---
+
+    app.logger.info(f"Received move: {start_rank},{start_file} -> {target_rank},{target_file} (promo={promotion_piece})")
+
+    try:
+        move_address_to_apply = 0
+        with engine_lock:
+            # 1. Get the address and count of the current valid C moves
+            moves_buffer_address, num_moves = engine.get_valid_moves_address_count()
+            if moves_buffer_address == 0 or num_moves == 0:
+                 app.logger.warning("No valid moves found in engine buffer for comparison.")
+                 return jsonify({"error": "Move cannot be applied: No valid moves available"}), 400
+
+            # 2. Iterate through the C buffer to find the matching move
+            found_move = False
+            move_ptr = cast(moves_buffer_address, POINTER(CtypesChessMove))
+            for i in range(num_moves):
+                c_move = move_ptr[i]
+                # Compare start, target, and promotion
+                if (c_move.start_position.rank == start_rank and
+                    c_move.start_position.file == start_file and
+                    c_move.target_position.rank == target_rank and
+                    c_move.target_position.file == target_file and
+                    c_move.promotion_target == promotion_piece):
+
+                    # Calculate the address of this specific move struct
+                    # Note: addressof(c_move) might get address of stack copy, calculate manually
+                    move_address_to_apply = moves_buffer_address + i * sizeof(CtypesChessMove)
+                    found_move = True
+                    app.logger.info(f"Found matching C move at index {i}, address {move_address_to_apply}")
+                    break # Stop searching once found
+
+            if not found_move:
+                app.logger.warning(f"Move {start_rank},{start_file}->{target_rank},{target_file}({promotion_piece}) not found in valid moves buffer.")
+                return jsonify({"error": "Invalid move: Not found in current valid moves"}), 400
+
+            # 3. Call the Cython engine's apply_move with the C move's address
+            app.logger.info(f"Calling engine.apply_move with address: {move_address_to_apply}")
+            apply_success = engine.apply_move(move_address_to_apply)
+
+            if not apply_success:
+                 app.logger.error(f"Cython engine.apply_move({move_address_to_apply}) returned false.")
+                 return jsonify({"error": "Engine failed to apply the move"}), 500
+
+            app.logger.info(f"Engine successfully applied move at address: {move_address_to_apply}")
+
+            # 4. Fetch the new board state address
+            new_state_address = engine.board_state_address
+            if new_state_address == 0:
+                app.logger.error("Failed to get new board state address after applying move!")
+                return jsonify({"error": "Failed to retrieve board state after move"}), 500
+
+            # 5. Convert the new C state to a Python dictionary
+            new_state_dict = state_address_to_dict(new_state_address)
+            if new_state_dict is None:
+                 return jsonify({"error": "Failed to convert new board state"}), 500
+
+        # 6. Return the new state as JSON
+        app.logger.info(f"Returning new state. Player: {new_state_dict.get('current_player')}, Status: {new_state_dict.get('status')}")
+        return jsonify(new_state_dict), 200
+
+    except ValueError as e: # Catch specific value errors from Cython/C
+         app.logger.error(f"Error applying move in engine: {e}", exc_info=True)
+         return jsonify({"error": f"Engine error applying move: {e}"}), 400 # 400 might be better if move was invalid
+    except RuntimeError as e: # Catch handle errors etc.
+         app.logger.error(f"Runtime error during /api/apply_move: {e}", exc_info=True)
+         return jsonify({"error": f"Server runtime error: {e}"}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error in /api/apply_move: {e}", exc_info=True)
+        return jsonify({"error": "Unexpected server error during move application"}), 500
 
 
 @app.route('/api/ai_move', methods=['POST'])
@@ -269,48 +365,20 @@ def trigger_ai_move():
             app.logger.info(f"Calculating AI move (difficulty={difficulty}, blocking)...")
             start_time = time.time()
 
-            # Assuming engine.ai_move updates the internal state correctly
-            # and doesn't rely on Python/Cython objects for state transfer now.
-            # It might need modification if it previously returned a state object.
-            ai_move_success = engine.ai_move(difficulty=difficulty) # Check if ai_move returns success?
+            # Call the Cython ai_move method, which modifies internal state
+            ai_move_success = engine.ai_move(difficulty=difficulty)
             if not ai_move_success:
                  app.logger.error("/api/ai_move: engine.ai_move returned false/failure.")
-                 # Even if it failed, try getting the state, might be unchanged or error state
-                 # Fall through to get the current state address
+                 # Fall through to get the (potentially unchanged) state
 
             end_time = time.time()
             app.logger.info(f"AI move calculation attempted in {end_time - start_time:.2f} seconds.")
 
-            # Fetch the state *after* ai_move completed using the address method
+            # Fetch the new state address *after* ai_move completed
             address = engine.board_state_address
-            if address == 0:
-                 app.logger.error("/api/ai_move: engine.board_state_address returned 0 after AI move!")
-                 return jsonify({"error": "AI move ran but engine state pointer is unavailable"}), 500
-
-            # Convert the address to state dict using ctypes (similar to /api/state)
-            state_ptr = cast(address, POINTER(CtypesBoardState))
-            if not state_ptr:
-                 app.logger.error("/api/ai_move: ctypes.cast resulted in a NULL pointer after AI move")
-                 return jsonify({"error": "Failed to cast engine state pointer after AI move"}), 500
-            c_state = state_ptr.contents
-
-            # Build dictionary (could refactor this into a helper)
-            new_state_dict = {}
-            py_pieces = []
-            for r in range(8):
-                row_list = []
-                for f in range(8):
-                    c_piece = c_state.pieces[r][f]
-                    row_list.append({'type': c_piece.type, 'player': c_piece.piece_player})
-                py_pieces.append(row_list)
-            new_state_dict['pieces'] = py_pieces
-            new_state_dict['current_player'] = c_state.current_player
-            new_state_dict['can_castle'] = list(c_state.can_castle)
-            new_state_dict['in_check'] = list(c_state.in_check)
-            new_state_dict['en_passant_valid'] = list(c_state.en_passant_valid)
-            new_state_dict['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn
-            new_state_dict['status'] = c_state.status
-            new_state_dict['can_claim_draw'] = c_state.can_claim_draw
+            new_state_dict = state_address_to_dict(address)
+            if new_state_dict is None:
+                return jsonify({"error": "Failed to retrieve or convert board state after AI move"}), 500
 
         # Return the newly fetched and converted state dictionary
         app.logger.info(f"Returning state after AI move. New current player: {new_state_dict.get('current_player', 'N/A')}")
@@ -339,11 +407,14 @@ def reset_game():
             app.logger.info("Attempting to re-initialize engine...")
             engine = ChessEngine(library_path=abs_lib_path, model_path=abs_model_path)
             app.logger.info("Engine re-initialized successfully.")
-            # Optionally fetch and return the initial state
-            # address = engine.board_state_address
-            # state_dict = ... convert address ...
-            # return jsonify({"message": "Game reset successfully", "initial_state": state_dict}), 200
-            return jsonify({"message": "Game reset successfully"}), 200
+
+            # Fetch and return the initial state after reset
+            address = engine.board_state_address
+            state_dict = state_address_to_dict(address)
+            if state_dict is None:
+                 return jsonify({"error": "Engine reset but failed to get initial state"}), 500
+
+            return jsonify({"message": "Game reset successfully", "initial_state": state_dict}), 200
         except Exception as e:
             app.logger.error(f"Error during engine reset: {e}", exc_info=True)
             engine = None # Ensure engine is None if reset fails

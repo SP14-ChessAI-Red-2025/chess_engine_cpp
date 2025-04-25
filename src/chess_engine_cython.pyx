@@ -6,7 +6,7 @@
 
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy, memset
-from libc.stddef cimport size_t, ptrdiff_t
+from libc.stddef cimport size_t, ptrdiff_t # Use ptrdiff_t for addresses
 from libc.stdint cimport uint8_t, uint32_t, int64_t, int8_t
 import sys
 import os
@@ -47,13 +47,15 @@ cdef extern from "chess_cpp/python_api.hpp":
     void* engine_create(const char* model_path) nogil
     void engine_destroy(void* engine_handle_opaque) nogil
     CBoardState* engine_get_board_state(void* engine_handle_opaque) nogil
+    # Engine function now fills OUR buffer
     size_t engine_get_valid_moves(void* engine_handle_opaque, CChessMove* out_moves_buffer, size_t buffer_capacity) nogil
-    cython.bint engine_apply_move(void* engine_handle_opaque, const CChessMove* move, CBoardState* out_board_state) nogil
+    # Apply move now takes only the move pointer, modifies internal state
+    cython.bint engine_apply_move(void* engine_handle_opaque, const CChessMove* move, CBoardState* out_ignored_state) nogil # Last arg ignored
     cython.bint engine_ai_move(void* engine_handle_opaque, int difficulty, void* callback) nogil # Callback is NULL
     cython.bint engine_move_to_str(void* engine_handle_opaque, const CChessMove* move, char* buffer, size_t buffer_size) nogil
     void engine_cancel_search(void* engine_handle_opaque) nogil
 
-# --- Python Wrapper Classes ---
+# --- Python Wrapper Classes (Unchanged, but not directly used by apply_move/move_to_str anymore) ---
 
 cdef class BoardPosition:
     cdef CBoardPosition c_pos
@@ -119,19 +121,20 @@ cdef class ChessMove:
         return f"ChessMove(type={self.type}, start={self.start!r}, target={self.target!r}{promo_str})"
 
 
+# --- ChessEngine Class ---
 cdef class ChessEngine:
     cdef void* c_engine_handle
     cdef cython.bint _handle_valid
     # --- Buffer members defined ---
-    cdef CChessMove* c_moves_buffer
-    cdef size_t c_moves_buffer_capacity
+    cdef CChessMove* c_moves_buffer           # Pointer to allocated C move buffer
+    cdef size_t c_moves_buffer_capacity       # Capacity of the allocated buffer
 
     def __cinit__(self, str library_path, str model_path):
         # Default initialization
         self.c_engine_handle = NULL
         self._handle_valid = False
         self.c_moves_buffer = NULL # Initialize buffer pointer to NULL
-        self.c_moves_buffer_capacity = 256 # Example capacity
+        self.c_moves_buffer_capacity = 256 # Example capacity, adjust if needed
 
         print(f"Cython ChessEngine: Initializing...")
         cdef bytes model_path_bytes = model_path.encode('utf-8')
@@ -145,15 +148,16 @@ cdef class ChessEngine:
             # Use ptrdiff_t for printing pointer address robustly
             print(f"Cython ChessEngine: Init OK (handle: {<ptrdiff_t>self.c_engine_handle}).")
 
+            # --- Allocate internal C buffer for moves ---
             print(f"Cython ChessEngine: Allocating move buffer (capacity={self.c_moves_buffer_capacity})...")
             self.c_moves_buffer = <CChessMove*>malloc(sizeof(CChessMove) * self.c_moves_buffer_capacity)
             if self.c_moves_buffer == NULL:
-                 print("[ERROR CYTHON] Failed to allocate internal move buffer!", file=sys.stderr)
-                 if self._handle_valid and self.c_engine_handle != NULL:
-                     with nogil: engine_destroy(self.c_engine_handle)
-                 self._handle_valid = False
-                 self.c_engine_handle = NULL
-                 raise MemoryError("Failed to allocate internal move buffer in ChessEngine __cinit__")
+                print("[ERROR CYTHON] Failed to allocate internal move buffer!", file=sys.stderr)
+                if self._handle_valid and self.c_engine_handle != NULL:
+                    with nogil: engine_destroy(self.c_engine_handle)
+                self._handle_valid = False
+                self.c_engine_handle = NULL
+                raise MemoryError("Failed to allocate internal move buffer in ChessEngine __cinit__")
             # Use ptrdiff_t for printing pointer address robustly
             print(f"Cython ChessEngine: Move buffer allocated successfully at address {<ptrdiff_t>self.c_moves_buffer}.")
 
@@ -161,10 +165,10 @@ cdef class ChessEngine:
             print(f"Cython ChessEngine: Error during __cinit__: {e}", file=sys.stderr)
             # Cleanup partially created resources
             if self.c_moves_buffer != NULL: # Free buffer if allocated before another error
-                 free(self.c_moves_buffer)
-                 self.c_moves_buffer = NULL
+                free(self.c_moves_buffer)
+                self.c_moves_buffer = NULL
             if self._handle_valid and self.c_engine_handle != NULL: # Destroy handle if created before error
-                 with nogil: engine_destroy(self.c_engine_handle)
+                with nogil: engine_destroy(self.c_engine_handle)
             self.c_engine_handle = NULL
             self._handle_valid = False
             raise # Re-raise the exception
@@ -191,21 +195,22 @@ cdef class ChessEngine:
             raise RuntimeError("Chess engine handle is invalid.")
         # Check if buffer pointer is NULL
         if self.c_moves_buffer == NULL:
-             raise RuntimeError("Chess engine internal move buffer is invalid (NULL).")
+            raise RuntimeError("Chess engine internal move buffer is invalid (NULL).")
 
     @property
     def board_state_address(self):
         """Returns the memory address of the current C board_state struct."""
         cdef CBoardState* c_state_ptr
-        self._check_handle()
+        self._check_handle() # Only checks handle validity now
         # print("[DEBUG CYTHON] Entering board_state_address getter", file=sys.stderr) # Optional
-        c_state_ptr = engine_get_board_state(self.c_engine_handle)
+        with nogil: # Ensure C call is nogil if appropriate
+             c_state_ptr = engine_get_board_state(self.c_engine_handle)
         if c_state_ptr == NULL:
             print("[ERROR CYTHON] engine_get_board_state returned NULL", file=sys.stderr)
             return 0
         # Cast pointer address to ptrdiff_t for returning as Python int
         address = <ptrdiff_t>c_state_ptr
-        # print(f"[DEBUG CYTHON] Returning address: {address}", file=sys.stderr) # Optional
+        # print(f"[DEBUG CYTHON] Returning board state address: {address}", file=sys.stderr) # Optional
         return address
 
     def get_valid_moves_address_count(self):
@@ -215,81 +220,94 @@ cdef class ChessEngine:
         # print("[DEBUG CYTHON] Entering get_valid_moves_address_count", file=sys.stderr) # Optional
 
         # Call C function to fill the engine's internal buffer
-        num_moves_found = engine_get_valid_moves(
-            self.c_engine_handle,
-            self.c_moves_buffer, # Use the allocated buffer
-            self.c_moves_buffer_capacity
-        )
+        with nogil: # Ensure C call is nogil if appropriate
+             num_moves_found = engine_get_valid_moves(
+                 self.c_engine_handle,
+                 self.c_moves_buffer, # Use the allocated buffer
+                 self.c_moves_buffer_capacity
+             )
 
         if num_moves_found > self.c_moves_buffer_capacity:
-            print(f"[WARNING CYTHON] Moves found ({num_moves_found}) exceeds buffer capacity ({self.c_moves_buffer_capacity}). Truncating.", file=sys.stderr)
+            # This case indicates the C function *found* more moves than could fit.
+            # The buffer will contain only the first `c_moves_buffer_capacity` moves.
+            print(f"[WARNING CYTHON] Moves found ({num_moves_found}) exceeds buffer capacity ({self.c_moves_buffer_capacity}). Buffer truncated by C API.", file=sys.stderr)
+            # The number of moves *actually in the buffer* is the capacity.
             num_moves_found = self.c_moves_buffer_capacity
 
         # Get the address of the buffer
-        address = <ptrdiff_t>self.c_moves_buffer # Address should now be non-zero
+        address = <ptrdiff_t>self.c_moves_buffer # Address of our Cython-managed buffer
         count = <int>num_moves_found
 
         # This should now print a non-zero address
-        print(f"[DEBUG CYTHON] Returning move buffer address={address}, count={count}", file=sys.stderr)
+        # print(f"[DEBUG CYTHON] Returning move buffer address={address}, count={count}", file=sys.stderr)
         return address, count
 
-    # --- TODO: Refactor apply_move, ai_move, move_to_str ---
-    # These methods currently use Cython objects (ChessMove) or internal logic
-    # that needs updating to work reliably with the ctypes approach used in server.py
 
-    def apply_move(self, move_address): # Example: Accept address from ctypes
-         """Applies move using address of a CChessMove struct."""
-         self._check_handle()
-         if move_address == 0: raise ValueError("Cannot apply NULL move address")
-         cdef CChessMove* move_ptr = <CChessMove*>move_address
-         cdef CBoardState c_new_state # Local C struct for output (Is this needed?)
-         cdef cython.bint success = 0
+    def apply_move(self, ptrdiff_t move_address):
+        """Applies move using address of a CChessMove struct from the internal buffer."""
+        self._check_handle()
+        if move_address == 0: raise ValueError("Cannot apply NULL move address")
 
-         print(f"[DEBUG CYTHON apply_move] Applying move at address {move_address}")
-         # Call C API - It modifies the engine's internal state directly
-         # and copies result to out_board_state if provided.
-         # We might not need c_new_state if we fetch state via board_state_address after.
-         with nogil: success = engine_apply_move(self.c_engine_handle, move_ptr, &c_new_state) # Using local stack var for now
+        # Cast the integer address back to a C pointer
+        cdef const CChessMove* move_ptr = <const CChessMove*>move_address
+        cdef cython.bint success = 0
+        # Dummy state to satisfy C API signature, content will be ignored
+        cdef CBoardState ignored_state
 
-         if not success:
-             raise ValueError("engine_apply_move returned false.")
-         print(f"[DEBUG CYTHON apply_move] engine_apply_move successful.")
-         # Instead of returning stack address, signal success or fetch new state address
-         return True # Indicate success, caller should fetch new state via board_state_address
+        # print(f"[DEBUG CYTHON apply_move] Applying move at address {move_address}")
+        # Call C API - it modifies the engine's internal state directly
+        with nogil:
+            success = engine_apply_move(self.c_engine_handle, move_ptr, &ignored_state)
+
+        if not success:
+            # Consider if C API provides more error info (e.g., invalid move address)
+            raise ValueError("engine_apply_move returned false (invalid move or internal error).")
+        # print(f"[DEBUG CYTHON apply_move] engine_apply_move successful.")
+
+        # Return True/False to indicate success/failure to the Python caller
+        return bool(success)
 
     def ai_move(self, int difficulty):
         """Triggers the AI calculation (blocking). Returns success/fail."""
         self._check_handle()
         cdef cython.bint success = 0
-        print(f"[DEBUG CYTHON ai_move] Calling engine_ai_move difficulty={difficulty}")
+        # print(f"[DEBUG CYTHON ai_move] Calling engine_ai_move difficulty={difficulty}")
         try:
             # This function modifies the internal state directly
             with nogil: success = engine_ai_move(self.c_engine_handle, difficulty, NULL)
             if not success:
                  print("[WARNING CYTHON] engine_ai_move returned false.", file=sys.stderr)
-            else:
-                 print("[DEBUG CYTHON ai_move] engine_ai_move successful.")
+            # else:
+            #      print("[DEBUG CYTHON ai_move] engine_ai_move successful.")
             return bool(success) # Return Python bool
         except Exception as e:
             print(f"Cython ai_move error: {e}", file=sys.stderr)
             traceback.print_exc()
             return False
 
-    def move_to_str(self, move_address): # Example: Accept address
-        """Converts move data at address to string."""
+    def move_to_str(self, ptrdiff_t move_address):
+        """Converts move data at the specified address to string."""
         self._check_handle()
         if move_address == 0: return "ERR! (Null Address)"
-        cdef CChessMove* move_ptr = <CChessMove*>move_address
+
+        # Cast the integer address back to a C pointer
+        cdef const CChessMove* move_ptr = <const CChessMove*>move_address
         cdef char buffer[16] # Small buffer for SAN/UCI
         cdef cython.bint success = 0
-        memset(buffer, 0, sizeof(buffer))
+        memset(buffer, 0, sizeof(buffer)) # Clear buffer
+
         try:
-            success = engine_move_to_str(self.c_engine_handle, move_ptr, buffer, sizeof(buffer))
+            with nogil: # Ensure C call is nogil if appropriate
+                success = engine_move_to_str(self.c_engine_handle, move_ptr, buffer, sizeof(buffer))
+
             if not success:
                 print("[Warning CYTHON move_to_str] engine_move_to_str failed or buffer too small.", file=sys.stderr)
-                # Return raw bytes on failure? Or empty string?
+                # Attempt to decode what might be in the buffer anyway
                 return buffer.decode('utf-8', errors='ignore')[:sizeof(buffer)-1]
+
+            # Decode successfully populated buffer
             return buffer.decode('utf-8', errors='replace')
+
         except Exception as e:
             print(f"Cython move_to_str error: {e}", file=sys.stderr)
             return "ERR!"
@@ -297,11 +315,11 @@ cdef class ChessEngine:
     def stop_search(self):
         """Signals the C++ engine to stop the current AI search."""
         self._check_handle()
-        print("Cython ChessEngine: Requesting AI search cancellation...")
+        # print("Cython ChessEngine: Requesting AI search cancellation...")
         with nogil: engine_cancel_search(self.c_engine_handle)
-        print("Cython ChessEngine: Cancel request sent via C API.")
+        # print("Cython ChessEngine: Cancel request sent via C API.")
 
-    # Context manager methods
+    # Context manager methods (Unchanged)
     def __enter__(self): return self
     def __exit__(self, exc_type, exc_value, tb):
         # __dealloc__ handles cleanup, don't need anything here usually
