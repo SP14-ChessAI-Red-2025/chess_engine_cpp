@@ -105,21 +105,24 @@ def moves_to_list(moves):
 @app.route('/api/state', methods=['GET'])
 def get_state():
     """Returns the current board state."""
-    if not engine: return jsonify({"error": "Chess engine not initialized on server"}), 500
+    if not engine:
+        app.logger.error("/api/state: Engine not initialized")
+        return jsonify({"error": "Chess engine not initialized on server"}), 500
     try:
         with engine_lock:
-             # Get the dictionary directly from the Cython property
              current_state_dict = engine.board_state
+
         if current_state_dict is None:
-             print("[ERROR] /api/state: engine.board_state returned None")
+             app.logger.error("/api/state: engine.board_state returned None")
              return jsonify({"error": "Engine state is unavailable"}), 500
 
+        print(f"DEBUG TYPE BEFORE JSONIFY: Type={type(current_state_dict)}")
+        
         return jsonify(current_state_dict)
 
     except Exception as e:
-        print(f"Error in /api/state: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": "Failed to get board state"}), 500
-
+        app.logger.error(f"Error DURING /api/state processing: {type(e).__name__}: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get board state due to server error: {type(e).__name__}"}), 500
 @app.route('/api/moves', methods=['GET'])
 def get_valid_moves_api():
     """Returns a list of valid moves for the current player."""
