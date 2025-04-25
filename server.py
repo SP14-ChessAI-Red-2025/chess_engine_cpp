@@ -164,6 +164,7 @@ def apply_move_api(): # WORKAROUND ADDED
 
             # 3. Call engine.apply_move - gets the address of the (potentially unchanged) C++ state
             new_state_address = engine.apply_move(move_address_to_apply) # <-- Gets potentially incorrect state address
+            time.sleep(0.1)
 
             if new_state_address == 0:
                 app.logger.error("engine.apply_move returned NULL address.")
