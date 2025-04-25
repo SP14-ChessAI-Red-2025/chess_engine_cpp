@@ -8,3 +8,11 @@ build/
 
 CMakeUserPresets.json
 /data/
+ort_install/
+python/chess_dir/ai_chess.cpython-312-x86_64-linux-gnu.so
+onnxruntime-linux-x64-1.18.0.tgz
+onnxruntime-linux-x64-1.18.0/
+python/chess_dir/ai_chess.cpython-312-x86_64-linux-gnu.so
+old_pyx.txt
+src/chess_engine_cython.html
+src/chess_engine_cython.cpp
