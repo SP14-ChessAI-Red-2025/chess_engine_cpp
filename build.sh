@@ -10,6 +10,6 @@ pip install -r requirements.txt
 echo "Building C++ library..."
 # Ensure build tools are available (cmake, make, g++ are usually present)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release  # Or use your specific preset/config
-cmake --build build --config Release
+cmake --build build --target chess_cpp --config Release
 
 echo "Build complete."
