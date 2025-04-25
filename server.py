@@ -242,7 +242,11 @@ def reset_game():
             abs_lib_path=os.path.abspath(os.path.join(project_root,LIBRARY_PATH));abs_model_path=os.path.abspath(os.path.join(project_root,MODEL_PATH))
             if not os.path.exists(abs_lib_path): raise FileNotFoundError(f"Lib not found: {abs_lib_path}")
             if not os.path.exists(abs_model_path): raise FileNotFoundError(f"Model not found: {abs_model_path}")
-            if engine: try: engine.close() except Exception as close_err: app.logger.warning(f"Error closing old engine: {close_err}")
+            if engine: 
+                try: 
+                    engine.close() 
+                except Exception as close_err: 
+                    app.logger.warning(f"Error closing old engine: {close_err}")
             engine = ChessEngine(library_path=abs_lib_path, model_path=abs_model_path); app.logger.info("Engine re-initialized.")
             address = engine.board_state_address; state_dict = state_address_to_dict(address)
             if state_dict is None: return jsonify({"error": "Engine reset but failed state"}), 500
