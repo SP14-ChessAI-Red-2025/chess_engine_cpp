@@ -188,26 +188,22 @@ cdef class ChessEngine:
                     row_list.append({'type': <int>c_piece.type, 'player': <int>c_piece.piece_player})
                 # --- ADDED DEBUG (Error Catching) ---
                 except AttributeError as ae:
-                    print(f"[FATAL DEBUG CYTHON] AttributeError accessing .pieces! Type of c_state_copy is: {type(c_state_copy)}", file=sys.stderr)
                     try:
                         # Attempt to print the problematic variable's value
-                        print(f"[FATAL DEBUG CYTHON] Value of c_state_copy: {c_state_copy!r}", file=sys.stderr)
                     except Exception as e_print:
-                        print(f"[FATAL DEBUG CYTHON] Could not print value of c_state_copy: {e_print}", file=sys.stderr)
-                    raise ae # Re-raise the original error
                 except Exception as e:
                      print(f"[FATAL DEBUG CYTHON] Other Exception accessing pieces: {type(e).__name__}: {e}", file=sys.stderr)
                      raise e
             py_pieces.append(row_list)
 
         py_state['pieces'] = py_pieces
-        py_state['current_player'] = <int>c_state_copy.current_player
-        py_state['can_castle'] = [bool(c_state_copy.can_castle[i]) for i in range(4)]
-        py_state['en_passant_valid'] = [bool(c_state_copy.en_passant_valid[i]) for i in range(16)]
-        py_state['turns_since_last_capture_or_pawn'] = c_state_copy.turns_since_last_capture_or_pawn
-        py_state['status'] = <int>c_state_copy.status
-        py_state['can_claim_draw'] = bool(c_state_copy.can_claim_draw)
-        py_state['in_check'] = [bool(c_state_copy.in_check[i]) for i in range(2)]
+        py_state['current_player'] = <int>c_state_ptr.current_player
+        py_state['can_castle'] = [bool(c_state_ptr.can_castle[i]) for i in range(4)]
+        py_state['en_passant_valid'] = [bool(c_state_ptr.en_passant_valid[i]) for i in range(16)]
+        py_state['turns_since_last_capture_or_pawn'] = c_state_ptr.turns_since_last_capture_or_pawn
+        py_state['status'] = <int>c_state_ptr.status
+        py_state['can_claim_draw'] = bool(c_state_ptr.can_claim_draw)
+        py_state['in_check'] = [bool(c_state_ptr.in_check[i]) for i in range(2)]
         return py_state
 
     def get_valid_moves(self):
