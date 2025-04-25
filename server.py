@@ -70,7 +70,7 @@ def moves_to_list_ctypes(move_buffer_address, num_moves):
     try:
         for i in range(num_moves):
             current_move = move_ptr[i]; current_move_addr = move_buffer_address + i * sizeof(CtypesChessMove)
-            san = engine.move_to_str_address(current_move_addr) if engine else "ERR!" # Assuming move_to_str_address exists
+            san = engine.move_to_str(current_move_addr) if engine else "ERR!" # Assuming move_to_str exists
             move_dict = {"type":current_move.type,"start":{"rank":current_move.start_position.rank,"file":current_move.start_position.file},"target":{"rank":current_move.target_position.rank,"file":current_move.target_position.file},"promotion":current_move.promotion_target,"san":san}; move_list.append(move_dict)
     except Exception as e: app.logger.error(f"Error processing ctypes move buffer: {e}", exc_info=True); return []
     return move_list
