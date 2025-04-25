@@ -164,8 +164,8 @@ cdef class ChessEngine:
     @property
     def board_state(self):
         cdef CBoardState* c_state_ptr
-        cdef CBoardState c_state_copy
         cdef int r, f, i
+        cdef object py_state
         """Returns the current board state as a Python dictionary."""
         self._check_handle()
 
@@ -173,21 +173,18 @@ cdef class ChessEngine:
 
         c_state_ptr = engine_get_board_state(self.c_engine_handle)
         if c_state_ptr == NULL: raise RuntimeError("engine_get_board_state returned NULL.")
-        memcpy(&c_state_copy, c_state_ptr, sizeof(CBoardState))
-
-        print(f"[DEBUG CYTHON] Type of c_state_copy before loop: {type(c_state_copy)}", file=sys.stderr)
 
         py_state = {}
         py_pieces = []
 
-        print(f"[DEBUG CYTHON] About to loop through pieces. type(c_state_copy) is still {type(c_state_copy)}", file=sys.stderr)
+        print(f"[DEBUG CYTHON] About to loop through pieces using c_state_ptr", file=sys.stderr)
 
         for r in range(8):
             row_list = []
             for f in range(8):
                 try:
                     # This is the line (~179) that caused the error
-                    c_piece = c_state_copy.pieces[r][f]
+                    c_piece = c_state_ptr.pieces[r][f]
                     row_list.append({'type': <int>c_piece.type, 'player': <int>c_piece.piece_player})
                 # --- ADDED DEBUG (Error Catching) ---
                 except AttributeError as ae:
@@ -202,7 +199,7 @@ cdef class ChessEngine:
                      print(f"[FATAL DEBUG CYTHON] Other Exception accessing pieces: {type(e).__name__}: {e}", file=sys.stderr)
                      raise e
             py_pieces.append(row_list)
-            
+
         py_state['pieces'] = py_pieces
         py_state['current_player'] = <int>c_state_copy.current_player
         py_state['can_castle'] = [bool(c_state_copy.can_castle[i]) for i in range(4)]
