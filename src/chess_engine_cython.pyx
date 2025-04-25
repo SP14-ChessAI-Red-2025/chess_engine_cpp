@@ -58,7 +58,8 @@ cdef class BoardPosition:
     cdef CBoardPosition c_pos
 
     def __cinit__(self, int rank, int file):
-        if not (0 <= rank < 8 and 0 <= file < 8): raise ValueError("Rank/file out of bounds")
+        if not (0 <= rank < 8 and 0 <= file < 8): 
+            raise ValueError("Rank/file out of bounds")
         self.c_pos.rank = <uint8_t>rank
         self.c_pos.file = <uint8_t>file
 
@@ -110,8 +111,10 @@ cdef class ChessMove:
     cdef int _promotion_py
 
     def __cinit__(self, int move_type, BoardPosition start, BoardPosition target, int promotion=PieceType.NONE): # Correctly indented
-        if start is None: raise TypeError("ChessMove start is None")
-        if target is None: raise TypeError("ChessMove target is None")
+        if start is None: 
+            TypeError("ChessMove start is None")
+        if target is None:
+            raise TypeError("ChessMove target is None")
         self._type_py = move_type
         self._start_pos_py = start
         self._target_pos_py = target
@@ -160,7 +163,8 @@ cdef class ChessEngine:
         cdef const char* c_model_path = model_path_bytes
         try:
             self.c_engine_handle = engine_create(c_model_path)
-            if self.c_engine_handle == NULL: raise MemoryError("engine_create returned NULL")
+            if self.c_engine_handle == NULL:
+                raise MemoryError("engine_create returned NULL")
             self._handle_valid = True
             print(f"Cython ChessEngine: Init OK (handle: {<ptrdiff_t>self.c_engine_handle}).")
             self.c_moves_buffer = <CChessMove*>malloc(sizeof(CChessMove) * self.c_moves_buffer_capacity)
@@ -179,7 +183,6 @@ cdef class ChessEngine:
                 with nogil: engine_destroy(self.c_engine_handle)
             self.c_engine_handle = NULL
             self._handle_valid = False 
-        raise
 
     def __dealloc__(self):
         if self._handle_valid and self.c_engine_handle != NULL:
@@ -191,8 +194,10 @@ cdef class ChessEngine:
             self.c_moves_buffer = NULL
 
     def _check_handle(self):
-        if not self._handle_valid or self.c_engine_handle == NULL: raise RuntimeError("Chess engine handle invalid.")
-        if self.c_moves_buffer == NULL: raise RuntimeError("Chess engine internal move buffer invalid (NULL).")
+        if not self._handle_valid or self.c_engine_handle == NULL:
+            raise RuntimeError("Chess engine handle invalid.")
+        if self.c_moves_buffer == NULL:
+            raise RuntimeError("Chess engine internal move buffer invalid (NULL).")
 
     @property
     def board_state_address(self) -> ptrdiff_t:
