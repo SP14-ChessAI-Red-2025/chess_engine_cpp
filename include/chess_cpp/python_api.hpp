@@ -1,6 +1,6 @@
-// include/chess_cpp/python_api.hpp (Modified Signatures)
-#ifndef PYTHON_API_HPP
-#define PYTHON_API_HPP
+// src/python_api.hpp
+#ifndef CHESS_CPP_PYTHON_API_HPP
+#define CHESS_CPP_PYTHON_API_HPP
 
 #include "chess_rules.hpp" // Include C++ type definitions
 #include <cstdint>         // For std::int32_t, std::size_t

@@ -1,4 +1,4 @@
-# server.py (Updated /api/apply_move and /api/ai_move endpoints)
+# server.py (Workaround: Manually flip player in returned dict)
 import os
 import sys
 import traceback
@@ -52,54 +52,42 @@ try:
     engine = ChessEngine(library_path=abs_lib_path, model_path=abs_model_path)
     app.logger.info("Chess Engine loaded successfully.")
 except Exception as init_error:
+    # NOTE: The user reported the server still fails to start here.
+    # This workaround won't help if initialization fails.
     app.logger.error(f"FATAL: Failed to initialize ChessEngine: {init_error}", exc_info=True)
 
 # --- Helper Functions ---
+# (moves_to_list_ctypes and state_address_to_dict remain the same as before)
 def moves_to_list_ctypes(move_buffer_address, num_moves):
-    # (Unchanged from previous version)
     if not engine or move_buffer_address == 0 or num_moves <= 0: return []
-    move_list = []
+    move_list = []; move_ptr = cast(move_buffer_address, POINTER(CtypesChessMove))
     try:
-        move_ptr = cast(move_buffer_address, POINTER(CtypesChessMove))
         for i in range(num_moves):
-            current_move = move_ptr[i]
-            current_move_addr = move_buffer_address + i * sizeof(CtypesChessMove)
+            current_move = move_ptr[i]; current_move_addr = move_buffer_address + i * sizeof(CtypesChessMove)
+            # Assuming move_to_str still exists and works with addresses
             san = engine.move_to_str(current_move_addr) if engine else "ERR!"
-            move_dict = {
-                "type": current_move.type,
-                "start": {"rank": current_move.start_position.rank, "file": current_move.start_position.file},
-                "target": {"rank": current_move.target_position.rank, "file": current_move.target_position.file},
-                "promotion": current_move.promotion_target, "san": san
-            }
-            move_list.append(move_dict)
-    except Exception as e:
-        app.logger.error(f"Error processing ctypes move buffer: {e}", exc_info=True); return []
+            move_dict = {"type":current_move.type,"start":{"rank":current_move.start_position.rank,"file":current_move.start_position.file},"target":{"rank":current_move.target_position.rank,"file":current_move.target_position.file},"promotion":current_move.promotion_target,"san":san}; move_list.append(move_dict)
+    except Exception as e: app.logger.error(f"Error processing ctypes move buffer: {e}", exc_info=True); return []
     return move_list
 
 def state_address_to_dict(address):
-    # (Unchanged from previous version)
     if address == 0: app.logger.error("state_address_to_dict received NULL address."); return None
     try:
-        state_ptr = cast(address, POINTER(CtypesBoardState))
-        if not state_ptr: app.logger.error("state_address_to_dict: cast resulted in NULL ptr."); return None
+        state_ptr = cast(address, POINTER(CtypesBoardState));
+        if not state_ptr: app.logger.error("state_address_to_dict: cast NULL ptr."); return None
         c_state = state_ptr.contents; py_state = {}; py_pieces = []
-        for r in range(8): py_pieces.append([{'type': c_state.pieces[r][f].type, 'player': c_state.pieces[r][f].piece_player} for f in range(8)])
-        py_state['pieces'] = py_pieces; py_state['current_player'] = c_state.current_player
-        py_state['can_castle'] = list(c_state.can_castle); py_state['in_check'] = list(c_state.in_check)
-        py_state['en_passant_valid'] = list(c_state.en_passant_valid)
-        py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn
-        py_state['status'] = c_state.status; py_state['can_claim_draw'] = c_state.can_claim_draw
+        for r in range(8): py_pieces.append([{'type':c_state.pieces[r][f].type, 'player':c_state.pieces[r][f].piece_player} for f in range(8)])
+        py_state['pieces'] = py_pieces; py_state['current_player'] = c_state.current_player; py_state['can_castle'] = list(c_state.can_castle); py_state['in_check'] = list(c_state.in_check); py_state['en_passant_valid'] = list(c_state.en_passant_valid); py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn; py_state['status'] = c_state.status; py_state['can_claim_draw'] = c_state.can_claim_draw
         return py_state
-    except Exception as e:
-        app.logger.error(f"Error converting C state addr {address} to dict: {e}", exc_info=True); return None
+    except Exception as e: app.logger.error(f"Error converting C state addr {address}: {e}", exc_info=True); return None
 
 # --- API Endpoints ---
 @app.route('/api/state', methods=['GET'])
 def get_state():
-    # (Unchanged)
+    # (Unchanged - Reads current state)
     if not engine: return jsonify({"error": "Engine not initialized"}), 500
     try:
-        address = 0
+        address = 0;
         with engine_lock: address = engine.board_state_address
         py_state = state_address_to_dict(address)
         if py_state is None: return jsonify({"error": "Failed to read state"}), 500
@@ -108,22 +96,22 @@ def get_state():
 
 @app.route('/api/moves', methods=['GET'])
 def get_valid_moves_api():
-    # (Unchanged)
+    # (Unchanged - Reads valid moves based on current C++ state)
     if not engine: return jsonify({"error": "Engine not initialized"}), 500
     try:
         address, count = 0, 0; valid_moves_list = []
         with engine_lock:
             address, count = engine.get_valid_moves_address_count()
-            valid_moves_list = moves_to_list_ctypes(address, count)
+            valid_moves_list = moves_to_list_ctypes(address, count) # Needs lock for move_to_str
         return jsonify(valid_moves_list)
     except Exception as e: app.logger.error(f"/api/moves error: {e}", exc_info=True); return jsonify({"error": "Failed moves"}), 500
 
 @app.route('/api/apply_move', methods=['POST'])
-def apply_move_api():
-    """ Applies player move, returns new state address from engine. """
+def apply_move_api(): # WORKAROUND ADDED
+    """ Applies player move, gets new state address from engine, returns state dict. """
     if not engine: return jsonify({"error": "Chess engine not initialized"}), 500
     if not request.is_json: return jsonify({"error": "Request must be JSON"}), 400
-    data = request.json
+    data = request.json;
     if not isinstance(data, dict): return jsonify({"error": "Invalid JSON format"}), 400
 
     try: # Extract and validate move data
@@ -136,8 +124,6 @@ def apply_move_api():
                 0 <= promotion_piece <= 6): raise ValueError("Invalid move data")
     except (KeyError, TypeError, ValueError) as e:
         return jsonify({"error": f"Invalid move data: {e}"}), 400
-
-    # app.logger.info(f"/api/apply_move: Rcvd: {start_rank},{start_file}->{target_rank},{target_file}(p={promotion_piece})")
 
     try:
         new_state_dict = None
@@ -163,41 +149,48 @@ def apply_move_api():
             if move_address_to_apply == 0:
                 return jsonify({"error": "Move not found in valid moves"}), 400
 
-            # 3. Call engine.apply_move - IT NOW RETURNS THE NEW STATE ADDRESS
-            new_state_address = engine.apply_move(move_address_to_apply)
+            # 3. Call engine.apply_move - gets the address of the (potentially unchanged) C++ state
+            new_state_address = engine.apply_move(move_address_to_apply) # <-- Gets potentially incorrect state address
 
             if new_state_address == 0:
-                # Error should have been raised by Cython/C++ if apply failed
-                app.logger.error("engine.apply_move returned NULL address unexpectedly.")
-                return jsonify({"error": "Engine failed to apply the move (returned null address)"}), 500
+                app.logger.error("engine.apply_move returned NULL address.")
+                return jsonify({"error": "Engine failed to apply the move"}), 500
 
-            # 4. Convert the returned address to dict
+            # 4. Convert the C++ state (potentially with wrong player) to dict
             new_state_dict = state_address_to_dict(new_state_address)
             if new_state_dict is None:
                  return jsonify({"error": "Failed to convert new board state"}), 500
 
-        # 5. Return the new state
-        # app.logger.info(f"Move applied. Returning new state. Player: {new_state_dict.get('current_player')}, Status: {new_state_dict.get('status')}")
+            # === WORKAROUND: Manually flip player in the *dictionary* ===
+            if 'current_player' in new_state_dict:
+                original_player = new_state_dict['current_player']
+                new_state_dict['current_player'] = 1 - original_player # Flip 0 to 1, 1 to 0
+                app.logger.warning(f"WORKAROUND applied: Flipped current_player in dict from {original_player} to {new_state_dict['current_player']}")
+            else:
+                 app.logger.error("Cannot apply workaround: 'current_player' key missing in state dict.")
+            # === END WORKAROUND ===
+
+        # 5. Return the MODIFIED dictionary
+        app.logger.info(f"Move applied (Python state modified). Returning state. Player: {new_state_dict.get('current_player')}, Status: {new_state_dict.get('status')}")
         return jsonify(new_state_dict), 200
 
     except ValueError as e: # Catch specific errors from Cython/C++
          app.logger.error(f"ValueError during apply_move: {e}", exc_info=True)
-         return jsonify({"error": f"Engine error: {e}"}), 400
+         return jsonify({"error": f"Engine error: {e}"}), 500 # Or 400?
     except Exception as e:
         app.logger.error(f"Error in /api/apply_move: {e}", exc_info=True)
         return jsonify({"error": "Server error applying move"}), 500
 
 
 @app.route('/api/ai_move', methods=['POST'])
-def trigger_ai_move():
-    """Triggers AI move, returns new state address from engine."""
+def trigger_ai_move(): # WORKAROUND ADDED
+    """Triggers AI move, gets new state address from engine, returns state dict."""
     if not engine: return jsonify({"error": "Chess engine not initialized"}), 500
 
     difficulty = 5
     if request.is_json and isinstance(request.json, dict):
         try: difficulty = int(request.json.get('difficulty', 5))
         except (ValueError, TypeError): difficulty = 5
-    # Removed playerColor check as it's handled implicitly by the engine state now
 
     try:
         new_state_dict = None
@@ -205,54 +198,56 @@ def trigger_ai_move():
             app.logger.info(f"Calculating AI move (difficulty={difficulty})...")
             start_time = time.time()
 
-            # === Call engine.ai_move - IT NOW RETURNS THE NEW STATE ADDRESS ===
-            new_state_address = engine.ai_move(difficulty=difficulty)
+            # === Call engine.ai_move - gets the address of the (potentially unchanged) C++ state ===
+            new_state_address = engine.ai_move(difficulty=difficulty) # <-- Gets potentially incorrect state address
             end_time = time.time()
             app.logger.info(f"AI move calculation attempt finished in {end_time - start_time:.2f} seconds.")
 
             if new_state_address == 0:
                  app.logger.error("engine.ai_move returned NULL address.")
-                 # Try getting current state if AI move failed
                  current_address = engine.board_state_address
                  state_dict = state_address_to_dict(current_address)
-                 if state_dict: return jsonify(state_dict), 200 # Return current state
+                 if state_dict: return jsonify(state_dict), 200 # Return current state if readable
                  else: return jsonify({"error": "AI move failed and subsequent state read failed"}), 500
 
-            # Convert the returned address to dict
+            # Convert the C++ state (potentially with wrong player) to dict
             new_state_dict = state_address_to_dict(new_state_address)
             if new_state_dict is None:
                 return jsonify({"error": "Failed to convert board state after AI move"}), 500
 
-        app.logger.info(f"AI moved. Returning new state. Player: {new_state_dict.get('current_player')}, Status: {new_state_dict.get('status')}")
+            # === WORKAROUND: Manually flip player in the *dictionary* ===
+            if 'current_player' in new_state_dict:
+                original_player = new_state_dict['current_player']
+                new_state_dict['current_player'] = 1 - original_player # Flip 0 to 1, 1 to 0
+                app.logger.warning(f"WORKAROUND applied: Flipped current_player in dict from {original_player} to {new_state_dict['current_player']}")
+            else:
+                 app.logger.error("Cannot apply workaround: 'current_player' key missing in state dict.")
+            # === END WORKAROUND ===
+
+        # Return the MODIFIED dictionary
+        app.logger.info(f"AI moved (Python state modified). Returning state. Player: {new_state_dict.get('current_player')}, Status: {new_state_dict.get('status')}")
         return jsonify(new_state_dict), 200
 
     except Exception as e:
         app.logger.error(f"Error in /api/ai_move: {e}", exc_info=True)
         return jsonify({"error": "Server error during AI move"}), 500
 
+# --- reset endpoint remains the same ---
 @app.route('/api/reset', methods=['POST'])
 def reset_game():
-    # (Unchanged from previous version)
     global engine
     with engine_lock:
-        app.logger.info("Received request to reset engine...")
+        app.logger.info("Received request to reset engine...");
         try:
-            abs_lib_path = os.path.abspath(os.path.join(project_root, LIBRARY_PATH))
-            abs_model_path = os.path.abspath(os.path.join(project_root, MODEL_PATH))
+            abs_lib_path=os.path.abspath(os.path.join(project_root,LIBRARY_PATH));abs_model_path=os.path.abspath(os.path.join(project_root,MODEL_PATH))
             if not os.path.exists(abs_lib_path): raise FileNotFoundError(f"Lib not found: {abs_lib_path}")
             if not os.path.exists(abs_model_path): raise FileNotFoundError(f"Model not found: {abs_model_path}")
-            if engine:
-                try: engine.close()
-                except Exception as close_err: app.logger.warning(f"Error closing old engine: {close_err}")
-            engine = ChessEngine(library_path=abs_lib_path, model_path=abs_model_path)
-            app.logger.info("Engine re-initialized.")
-            address = engine.board_state_address
-            state_dict = state_address_to_dict(address)
+            if engine: try: engine.close() except Exception as close_err: app.logger.warning(f"Error closing old engine: {close_err}")
+            engine = ChessEngine(library_path=abs_lib_path, model_path=abs_model_path); app.logger.info("Engine re-initialized.")
+            address = engine.board_state_address; state_dict = state_address_to_dict(address)
             if state_dict is None: return jsonify({"error": "Engine reset but failed state"}), 500
             return jsonify({"message": "Game reset", "initial_state": state_dict}), 200
-        except Exception as e:
-            app.logger.error(f"Error during engine reset: {e}", exc_info=True); engine = None
-            return jsonify({"error": f"Failed to reset engine: {e}"}), 500
+        except Exception as e: app.logger.error(f"Error during reset: {e}", exc_info=True); engine = None; return jsonify({"error": f"Failed reset: {e}"}), 500
 
 # --- Run the Server ---
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-// src/python_api.cpp (Modified Implementations)
+// src/python_api.cpp
 #include "chess_cpp/python_api.hpp"
 #include "chess_cpp/chess_ai.hpp"
 #include "chess_cpp/chess_rules.hpp"
@@ -68,7 +68,7 @@ struct EngineHandle {
 // Define functions within extern "C" block
 extern "C" {
 
-    // --- Engine Handle Management --- (Unchanged)
+    // --- Engine Handle Management --- 
     DLLEXPORT void* engine_create(const char* model_path) noexcept {
         if (!model_path) { /* ... error handling ... */ return nullptr; }
         EngineHandle* handle = nullptr;
@@ -77,7 +77,9 @@ extern "C" {
             if (!handle || !handle->is_ai_state_initialized()) { /* ... error handling ... */ delete handle; return nullptr; }
             std::cout << "[C API] engine_create successful." << std::endl;
             return handle;
-        } catch (...) { /* ... error handling ... */ delete handle; return nullptr; }
+        } catch (...) {
+            delete handle; return nullptr; 
+        }
     }
 
     DLLEXPORT void engine_destroy(void* engine_handle_opaque) noexcept {
@@ -87,13 +89,13 @@ extern "C" {
         } else { /* ... warning ... */ }
     }
 
-    // --- Board State Access --- (Unchanged)
+    // --- Board State Access --- 
     DLLEXPORT chess::board_state* engine_get_board_state(void* engine_handle_opaque) noexcept {
         if (!engine_handle_opaque) { /* ... error handling ... */ return nullptr; }
         return &(static_cast<EngineHandle*>(engine_handle_opaque)->current_board);
     }
 
-    // --- Get Valid Moves --- (Unchanged)
+    // --- Get Valid Moves ---
     DLLEXPORT size_t engine_get_valid_moves(void* engine_handle_opaque,
                                             chess::chess_move* out_moves_buffer,
                                             size_t buffer_capacity) noexcept
@@ -115,7 +117,7 @@ extern "C" {
         return num_moves_found;
     }
 
-    // --- Apply Move (MODIFIED) ---
+    // --- Apply Move ---
     DLLEXPORT chess::board_state* engine_apply_move(void* engine_handle_opaque,
                                                     const chess::chess_move* move) noexcept { // Removed out_board_state*, returns pointer
         if (!engine_handle_opaque || !move) {
@@ -140,7 +142,7 @@ extern "C" {
         }
     }
 
-    // --- AI Move Calculation (MODIFIED) ---
+    // --- AI Move Calculation ---
     DLLEXPORT chess::board_state* engine_ai_move(void* engine_handle_opaque, int difficulty, ProgressCallback /*callback*/) noexcept { // Returns pointer
         if (!engine_handle_opaque) {
             std::cerr << "[C API ERROR] engine_ai_move called with null handle." << std::endl;
@@ -171,7 +173,7 @@ extern "C" {
         }
     }
 
-    // --- Move to String (Unchanged) ---
+    // --- Move to String ---
     DLLEXPORT bool engine_move_to_str(void* engine_handle_opaque, const chess::chess_move* move, char* buffer, size_t buffer_size) noexcept {
         if (!engine_handle_opaque || !move || !buffer || buffer_size == 0) return false;
         EngineHandle* handle = static_cast<EngineHandle*>(engine_handle_opaque);
