@@ -1,0 +1,177 @@
+/* src/App.css */
+
+/* --- App Container --- */
+.App {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* Centers children horizontally */
+  justify-content: center; /* Attempts vertical centering */
+  font-family: sans-serif;
+  padding: 20px;
+  min-height: 100vh; /* Make app take full viewport height */
+  background-color: #282c34; /* Dark background for the whole app */
+  color: white; /* Default text color */
+}
+
+/* --- Timer Display Styles REMOVED --- */
+
+
+/* --- Game Status Info --- */
+.game-info {
+  margin: 15px 0 20px 0; /* Use more top/bottom margin if no timer */
+  font-size: 1.3em;
+  min-height: 1.5em; /* Prevent layout shift */
+  font-weight: bold;
+  color: #eee; /* Lighter text */
+}
+
+/* Style for when loading/thinking */
+.game-info.loading-active {
+    color: #ffab40; /* More vibrant orange/yellow */
+    font-style: italic;
+}
+
+/* --- Chess Board --- */
+.board {
+  width: 80vmin; /* Responsive size */
+  height: 80vmin;
+  max-width: 600px; /* Max size */
+  max-height: 600px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  border: 5px solid #6a4f4b; /* Darker wood border */
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3); /* Slightly deeper shadow */
+  margin-bottom: 25px; /* Space below board */
+  background-color: #b58863; /* Fallback/border color */
+}
+
+/* --- Board Squares --- */
+.square {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative; /* For highlight elements */
+  cursor: pointer;
+  overflow: hidden; /* Prevent highlights bleeding out */
+}
+
+/* Board Colors */
+.square.light { background-color: #f0d9b5; }
+.square.dark { background-color: #b58863; }
+
+/* --- Square Highlighting and Selection --- */
+.square.selected {
+  /* Blue glow for selected square */
+  box-shadow: inset 0 0 0 4px rgba(50, 150, 255, 0.8);
+  z-index: 1;
+}
+
+.square.highlight::before {
+    /* Greenish circle for valid moves */
+    content: '';
+    position: absolute;
+    box-sizing: border-box;
+    width: 35%; /* Highlight size */
+    height: 35%;
+    background-color: rgba(40, 167, 69, 0.4); /* Bootstrap success green, semi-transparent */
+    border: 2px solid rgba(40, 167, 69, 0.7);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* --- Piece Image Styling --- */
+.piece-image {
+  display: block;
+  width: 85%;
+  height: 85%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  position: relative;
+  z-index: 3;
+}
+
+/* --- Game Mode Selector --- */
+.game-mode-selector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    margin-top: 30px;
+    background-color: #3a3f4a;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    width: 80%;
+    max-width: 400px;
+}
+
+.game-mode-selector h2 {
+    margin-bottom: 30px;
+    font-size: 1.8em;
+    color: #e0e0e0;
+    text-align: center;
+}
+
+.game-mode-selector button {
+    padding: 12px 25px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    background-color: #61dafb;
+    color: #282c34;
+    margin-bottom: 15px;
+    width: 100%;
+    text-align: center;
+    transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+}
+
+.game-mode-selector button:last-child {
+     margin-bottom: 0;
+}
+
+.game-mode-selector button:hover {
+    background-color: #21a1f1;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.game-mode-selector button:active {
+     transform: translateY(0px);
+     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* --- Loading Indicator --- */
+.loading {
+    font-size: 1.5em;
+    margin-top: 50px;
+    color: #aaa;
+}
+
+/* --- Change Mode Button (at bottom of App) --- */
+.App > button { /* Target the button directly under .App */
+  margin-top: 25px;
+  padding: 10px 20px; /* Slightly larger */
+  font-size: 1em;     /* Slightly larger */
+  background-color: #555;
+  color: #eee;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.App > button:hover {
+  background-color: #777;
+}
+
+.App > button:disabled { /* Style for disabled button */
+  background-color: #444;
+  color: #888;
+  cursor: not-allowed;
+}

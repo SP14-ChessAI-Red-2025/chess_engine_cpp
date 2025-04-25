@@ -1,251 +1,526 @@
-from ctypes import *
-from collections.abc import Callable
-from typing import Any, Self
+# python/chess_dir/ai_chess.py
+import time
+import sys
+from ctypes import (
+    CDLL, Structure, POINTER, c_void_p, c_size_t, c_int8, c_uint8, c_int32,
+    c_double, c_char_p, byref, create_string_buffer, c_bool, cast, sizeof,
+    create_unicode_buffer, addressof, string_at, c_uint8, c_int8, c_bool, c_int32
+)
 import os
+import platform # To potentially adjust library name
+import traceback # For detailed error printing
+
+# --- Define C structures matching C++ structs ---
+# Ensure these exactly match the layout in C++ headers
 
 class BoardPosition(Structure):
-    _fields_ = [("rank", c_uint8), ("file", c_uint8)]
-
-    def __str__(self) -> str:
-        file_str = chr(ord("a") + self.file)
-        return f"{file_str}{self.rank+1}"
-
-class ChessMove(Structure):
-    _fields_ = [("type", c_int), ("start_position", BoardPosition), ("target_position", BoardPosition), ("promotion_target", c_int)]
-
-    def __str__(self) -> str:
-        # TODO: customize output for castling, promotion, resignation, and claiming a draw
-        type_str_arr = ["Move", "Capture", "En passant", "Castle", "Promotion", "Claim draw", "Resign"]
-        type_index = self.type
-        if 0 <= type_index < len(type_str_arr):
-            type_str = type_str_arr[type_index]
-        else:
-            type_str = "UnknownMoveType"
-
-        if self.type == 3: # Castle
-             side = "Kingside" if self.start_position.file == 7 else "Queenside"
-             return f"{type_str} ({side})"
-        elif self.type == 4: # Promotion
-             promo_piece_type = self.promotion_target
-             promo_piece_str = ["?", "P", "N", "B", "R", "Q", "K"][promo_piece_type]
-             return f"{type_str}: {self.start_position} -> {self.target_position}={promo_piece_str}"
-        elif self.type == 5: # Claim Draw
-            return f"{type_str}"
-        elif self.type == 6: # Resign
-            return f"{type_str}"
-        else:
-            return f"{type_str}: {self.start_position} -> {self.target_position}"
+    _pack_ = 1 # Explicitly pack structure (Keep this from previous attempt)
+    _fields_ = [("rank", c_uint8), # Corresponds to uint8_t
+                ("file", c_uint8)] # Corresponds to uint8_t
+    def __repr__(self):
+        return f"Pos(r={self.rank}, f={self.file})"
 
 
 class Piece(Structure):
-    _fields_ = [("piece_type", c_int), ("piece_player", c_int)]
+    _pack_ = 1 # Explicitly pack structure
+    _fields_ = [("type", c_int8),         # Corresponds to piece_type enum
+                ("piece_player", c_int8)] # Corresponds to player enum
+    def __repr__(self):
+        return f"Piece(t={self.type}, p={self.piece_player})"
 
-class BoardStateCType(Structure):
+class ChessMove(Structure):
+    _pack_ = 1 # Explicitly pack structure
+    _fields_ = [("type", c_int8),             # Corresponds to move_type enum
+                ("start_position", BoardPosition),
+                ("target_position", BoardPosition),
+                ("promotion_target", c_int8)] # Corresponds to piece_type enum
+    def __repr__(self):
+         return (f"Move(t={self.type}, start={self.start_position}, "
+                 f"target={self.target_position}, promo={self.promotion_target})")
+
+
+class BoardState(Structure):
+    _pack_ = 1 # Explicitly pack structure
     _fields_ = [("pieces", (Piece * 8) * 8),
                 ("can_castle", c_bool * 4),
                 ("in_check", c_bool * 2),
                 ("en_passant_valid", c_bool * 16),
-                ("turns_since_last_capture_or_pawn", c_int),
-                ("current_player", c_int),
-                ("status", c_int),
-                ("can_claim_draw", c_bool)]
+                ("turns_since_last_capture_or_pawn", c_int32),
+                ("current_player", c_int8),
+                ("status", c_int8),
+                ("can_claim_draw", c_bool),
+                ("_padding_", c_uint8 * 3)]
 
-class BoardState:
-    """Wrapper around the C board state structure."""
-    board_state_impl: BoardStateCType
+# --- Enums (for reference and potential use in Python logic) ---
+class PieceType:
+    NONE = 0
+    PAWN = 1
+    KNIGHT = 2
+    BISHOP = 3
+    ROOK = 4
+    QUEEN = 5
+    KING = 6
 
-    def __init__(self, board_state: BoardStateCType):
-        self.board_state_impl = board_state
+class Player:
+    WHITE = 0
+    BLACK = 1
 
-    @property
-    def pieces(self) -> Any: # Ctypes arrays are tricky with type hints
-        """Access the 8x8 board pieces. pieces[rank][file]."""
-        return self.board_state_impl.pieces
+class MoveType:
+    NORMAL = 0
+    CAPTURE = 1
+    EN_PASSANT = 2
+    CASTLE = 3
+    PROMOTION = 4
+    CLAIM_DRAW = 5
+    RESIGN = 6
 
-    @property
-    def status(self) -> int:
-        """Get the current game status (0: normal, 1: draw, 2: checkmate, 3: resigned)."""
-        return self.board_state_impl.status
+class GameStatus:
+    NORMAL = 0
+    DRAW = 1
+    CHECKMATE = 2
+    RESIGNED = 3
+    DRAW_BY_REPETITION = 4 # Added specific draw type
 
-    @property
-    def current_player(self) -> int:
-        """Get the current player (0: white, 1: black)."""
-        return self.board_state_impl.current_player
-
-    @property
-    def can_claim_draw(self) -> bool:
-         """Check if the current player can claim a draw (e.g., 50-move rule)."""
-         return self.board_state_impl.can_claim_draw
-
-    @property
-    def in_check(self) -> tuple[bool, bool]:
-         """Check if white (index 0) or black (index 1) is in check."""
-         return (self.board_state_impl.in_check[0], self.board_state_impl.in_check[1])
-
-    @property
-    def can_castle(self) -> tuple[bool, bool, bool, bool]:
-         """Check castling rights [White Kingside, White Queenside, Black Kingside, Black Queenside]."""
-         return (self.board_state_impl.can_castle[0], self.board_state_impl.can_castle[1],
-                 self.board_state_impl.can_castle[2], self.board_state_impl.can_castle[3])
-
-    @property
-    def turns_since_last_capture_or_pawn(self) -> int:
-         """Get the number of half-moves since the last capture or pawn move."""
-         return self.board_state_impl.turns_since_last_capture_or_pawn
-
-
+# --- ChessEngine Class ---
 class ChessEngine:
-    """
-    Python wrapper for the C++ chess_dir engine library.
+    """ Python wrapper for the C++ chess engine shared library using EngineHandle. """
+    def __init__(self, library_path, model_path):
+        """ Initializes the ChessEngine using the EngineHandle C API. """
+        self._lib = None
+        self._engine_handle = None # Opaque pointer to C++ EngineHandle
+        self.board_state = None    # Python ctypes BoardState structure (local copy)
 
-    Handles loading the library, managing the AI state (including the NNUE model),
-    and interacting with the core chess_dir logic functions.
+        print(f"Attempting to load library: {library_path}")
+        print(f"Attempting to load model: {model_path}")
 
-    Use as a context manager (`with ChessEngine(...) as engine:`) to ensure
-    proper memory management of the C++ AI state.
-    """
-
-    __get_initial_board_state: Callable[[], BoardStateCType]
-    __get_valid_moves: Callable[[BoardStateCType, Any], Any]
-    __free_moves: Callable[[Any], None]
-    __apply_move: Callable[[Any, ChessMove], None]
-    __ai_move: Callable[[c_void_p, Any, c_int32], None]
-    __init_ai_state: Callable[[c_char_p], c_void_p]
-    __free_ai_state: Callable[[c_void_p], None]
-
-    board_state: BoardState
-    __ai_state: c_void_p | None # Can be None if initialization fails
-
-    def __init__(self, library_path: str, model_path: str) -> None:
-        """
-        Initializes the Chess Engine.
-
-        Args:
-            library_path: Path to the compiled C++ shared library
-                          (e.g., 'chess_cpp_pybind.so' or 'chess_cpp_pybind.dll').
-            model_path: Path to the ONNX NNUE model file (e.g., 'nnue_model.onnx').
-
-        Raises:
-            FileNotFoundError: If the library or model file does not exist.
-            OSError: If the library cannot be loaded.
-            RuntimeError: If the C++ AI state fails to initialize (e.g., invalid model).
-        """
+        # --- Validate Paths ---
         if not os.path.exists(library_path):
-            raise FileNotFoundError(f"Shared library not found at: {library_path}")
+            base, _ = os.path.splitext(library_path)
+            system = platform.system()
+            ext = ".so" # Default Linux
+            if system == "Windows": ext = ".dll"
+            elif system == "Darwin": ext = ".dylib"
+            library_path = base + ext
+            if not os.path.exists(library_path):
+                raise FileNotFoundError(f"Shared library not found: {library_path}")
+
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"ONNX model file not found at: {model_path}")
+             raise FileNotFoundError(f"NNUE model file not found: {model_path}")
 
         try:
-            lib = CDLL(library_path)
-        except OSError as e:
-            raise OSError(f"Failed to load shared library from {library_path}: {e}")
+            # --- Load Library ---
+            self._lib = CDLL(library_path)
+            print(f"Library loaded successfully from: {library_path}")
 
-        try:
-            self.__get_initial_board_state = lib.get_initial_board_state
-            self.__get_initial_board_state.restype = BoardStateCType
+            # --- Define argtypes and restype for C functions (NEW API) ---
+            self._lib.engine_create.argtypes = [c_char_p]
+            self._lib.engine_create.restype = c_void_p
+            self._lib.engine_destroy.argtypes = [c_void_p]
+            self._lib.engine_destroy.restype = None
 
-            self.__get_valid_moves = lib.get_valid_moves
-            self.__get_valid_moves.argtypes = [BoardStateCType, POINTER(c_size_t)]
-            self.__get_valid_moves.restype = POINTER(ChessMove)
+            self._lib.engine_get_board_state.argtypes = [c_void_p]
+            self._lib.engine_get_board_state.restype = POINTER(BoardState)
 
-            self.__free_moves = lib.free_moves
-            self.__free_moves.argtypes = [POINTER(ChessMove)]
-            self.__free_moves.restype = None
+            self._lib.engine_get_valid_moves.argtypes = [c_void_p, POINTER(ChessMove), c_size_t]
+            self._lib.engine_get_valid_moves.restype = c_size_t # Returns number of moves found
 
-            self.__apply_move = lib.apply_move
-            self.__apply_move.argtypes = [POINTER(BoardStateCType), ChessMove]
-            self.__apply_move.restype = None
+            # === engine_apply_move signature ===
+            self._lib.engine_apply_move.argtypes = [c_void_p, POINTER(ChessMove)]
+            self._lib.engine_apply_move.restype = c_bool
 
-            self.__init_ai_state = lib.init_ai_state
-            self.__init_ai_state.argtypes = [c_char_p]
-            self.__init_ai_state.restype = c_void_p
+            self._lib.engine_ai_move.argtypes = [c_void_p, c_int32, c_void_p] # Handle, difficulty, callback (ignored)
+            self._lib.engine_ai_move.restype = c_bool # Returns success/failure
 
-            self.__free_ai_state = lib.free_ai_state
-            self.__free_ai_state.argtypes = [c_void_p]
-            self.__free_ai_state.restype = None
+            self._lib.engine_cancel_search.argtypes = [c_void_p]
+            self._lib.engine_cancel_search.restype = None
 
-            self.__ai_move = lib.ai_move
-            self.__ai_move.argtypes = [c_void_p, POINTER(BoardStateCType), c_int32]
-            self.__ai_move.restype = None
+            # Move to string helper
+            self._lib.engine_move_to_str.argtypes = [c_void_p, POINTER(ChessMove), c_char_p, c_size_t]
+            self._lib.engine_move_to_str.restype = c_bool
 
-        except AttributeError as e:
-            raise AttributeError(f"Failed to find a required function in the library {library_path}. "
-                                 f"Ensure the library is compiled correctly and matches the API. Missing function: {e}")
+            print("C function signatures defined (EngineHandle API).")
 
-        model_path_bytes = model_path.encode('utf-8')
-        self.__ai_state = self.__init_ai_state(model_path_bytes)
-        if not self.__ai_state:
-             raise RuntimeError(f"Failed to initialize C++ AI state. "
-                                f"Check library compatibility and if the model file '{model_path}' is valid/loadable by the C++ backend.")
+            # --- Initialize C++ Engine Handle ---
+            model_path_bytes = model_path.encode('utf-8')
+            self._engine_handle = self._lib.engine_create(model_path_bytes)
+            if not self._engine_handle:
+                raise RuntimeError("Failed to initialize C++ EngineHandle (engine_create returned null).")
+            print(f"Engine handle initialized (pointer: {self._engine_handle}).")
 
-        self.board_state = BoardState(self.__get_initial_board_state())
+            # --- Get Initial Board State ---
+            self._update_local_board_state() # Fetch initial state into self.board_state
+            if self.board_state is None:
+                 raise RuntimeError("Failed to get initial board state from engine handle.")
+            print("Initial board state obtained.")
+
+        except Exception as e:
+             print(f"Error during ChessEngine initialization: {e}")
+             self.close() # Ensure cleanup on error
+             raise # Re-raise the exception
+
+    def _update_local_board_state(self):
+        """ Fetches the current board state from C++ and updates the local copy. """
+        if not self._lib or not self._engine_handle:
+            print("Warning: Cannot update board state, engine not initialized.")
+            self.board_state = None
+            return
+
+        # print("[PYTHON DEBUG _update_local] Calling engine_get_board_state...") # ADDED
+        board_ptr = self._lib.engine_get_board_state(self._engine_handle)
+        if board_ptr:
+            # ADDED Debug prints:
+            try:
+                c_player_val = board_ptr.contents.current_player
+                # print(f"[PYTHON DEBUG _update_local] C state pointer valid. Player value from C struct: {c_player_val}")
+            except Exception as e:
+                print(f"[PYTHON DEBUG _update_local] Error accessing C pointer contents: {e}")
+                c_player_val = -99 # Indicate error
+
+            # Original line:
+            self.board_state = board_ptr.contents
+
+            # ADDED Debug print:
+            if self.board_state:
+                print(f"[PYTHON DEBUG _update_local] self.board_state updated. Player value in Python copy: {self.board_state.current_player}")
+        else:
+            self.board_state = None # Mark as invalid
 
     def get_valid_moves(self) -> list[ChessMove]:
-        """Returns a list of all valid moves for the current board state."""
-        size = c_size_t()
-        valid_moves_ptr = self.__get_valid_moves(self.board_state.board_state_impl, byref(size))
+        """ Gets a list of valid moves for the current board state using the EngineHandle API. """
+        if not self._lib: raise RuntimeError("Library not loaded.")
+        if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
+        if self.board_state is None: raise RuntimeError("Board state not available.") # Check local copy
 
-        if not valid_moves_ptr:
-             if size.value == 0:
-                 return []
-             else:
-                 raise RuntimeError("C++ get_valid_moves returned a null pointer unexpectedly.")
+        # print(f"[PYTHON DEBUG] sizeof(ChessMove) = {sizeof(ChessMove)}")
 
-        valid_moves = []
+        # --- First Call: Get the number of moves needed ---
+        # print("[PYTHON DEBUG] Calling engine_get_valid_moves (1st time) to get size...")
+        num_moves_needed = self._lib.engine_get_valid_moves(self._engine_handle, None, 0)
+
+        # print(f"[PYTHON DEBUG] engine_get_valid_moves (1st time) reported {num_moves_needed} moves needed.")
+
+        if num_moves_needed == 0:
+            # print("[PYTHON DEBUG] No valid moves available.")
+            return [] # No moves to get
+
+        # --- Allocate Buffer in Python ---
+        MoveArrayType = ChessMove * num_moves_needed
+        moves_buffer = MoveArrayType()
+        # print(f"[PYTHON DEBUG] Allocated buffer of size {sizeof(moves_buffer)} bytes for {num_moves_needed} moves.")
+
+        # --- Second Call: Fill the buffer ---
+        # print("[PYTHON DEBUG] Calling engine_get_valid_moves (2nd time) to fill buffer...")
+        num_moves_filled = self._lib.engine_get_valid_moves(self._engine_handle, moves_buffer, num_moves_needed)
+
+        if num_moves_filled != num_moves_needed:
+            # This indicates an error or inconsistency in the C++ side
+            print(f"[PYTHON WARNING/ERROR] Mismatch in move count: Needed={num_moves_needed}, Filled={num_moves_filled}. Using filled count.")
+            # Adjust loop range if counts mismatch, though ideally they shouldn't
+            count_to_use = min(num_moves_needed, num_moves_filled)
+            if num_moves_filled > num_moves_needed: # Should not happen
+                print("[PYTHON ERROR] C++ reported filling more moves than buffer size! Limiting read.")
+                count_to_use = num_moves_needed
+        else:
+            count_to_use = num_moves_filled
+
+        # --- Convert ctypes buffer to Python list ---
+        moves = []
+        if count_to_use > 0: # Only proceed if there are moves to convert
+            try:
+                # Iterate through the buffer we allocated and filled, up to the actual filled count
+                moves = [moves_buffer[i] for i in range(count_to_use)]
+                # print(f"[PYTHON DEBUG] Successfully converted buffer to list of {len(moves)} moves.")
+            except Exception as e:
+                print(f"Error converting Python buffer to list: {e}")
+                print(traceback.format_exc())
+                moves = []
+        else:
+            # print("[PYTHON DEBUG] No moves reported filled by the second call.")
+
+
+        return moves
+
+    # ===  apply_move method ===
+    def apply_move(self, move: ChessMove) -> BoardState | None: # Return BoardState again
+        if not self._lib: raise RuntimeError("Library not loaded.")
+        if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
+
+        result_board_state = BoardState() # Buffer to receive C++ result
+
+        print(f"[PYTHON apply_move] Calling C++ engine_apply_move for move {self.move_to_str(move)}")
+        success = self._lib.engine_apply_move(
+            self._engine_handle,
+            byref(move),
+            byref(result_board_state) # Pass output buffer
+        )
+        print(f"[PYTHON apply_move] C++ engine_apply_move returned: {success}")
+
+        if not success:
+            print(f"[PYTHON WARNING] engine_apply_move returned false.")
+            return None
+
+        # --- SUCCESS: Read explicitly from buffer BEFORE assigning ---
         try:
-            if size.value > 1000: # Sanity check limit
-                 raise MemoryError(f"Reported number of valid moves ({size.value}) is excessively large.")
+            player_in_buffer = result_board_state.current_player # Read directly from buffer
+            print(f"[PYTHON apply_move] Player read DIRECTLY from result buffer: {player_in_buffer}") # <<< ADD THIS LOG
+        except Exception as e_read:
+            print(f"[PYTHON apply_move] ERROR reading player directly from buffer: {e_read}")
+            player_in_buffer = -99 # Indicate error
 
-            for i in range(size.value):
-                 move_c = valid_moves_ptr[i]
-                 move_py = ChessMove()
-                 memmove(byref(move_py), byref(move_c), sizeof(ChessMove))
-                 valid_moves.append(move_py)
+        # Now assign the whole struct
+        self.board_state = result_board_state
+        # Log the value AFTER assignment to self.board_state
+        print(f"[PYTHON apply_move] Updated self.board_state from output param. Player NOW IN self.board_state: {self.board_state.current_player if self.board_state else 'None'}")
 
-        finally:
-            self.__free_moves(valid_moves_ptr)
+        # Check if the value changed during assignment
+        if self.board_state and self.board_state.current_player != player_in_buffer:
+             print("[PYTHON apply_move] *** MISMATCH between buffer read and self.board_state read! ***")
 
-        return valid_moves
 
-    def apply_move(self, move: ChessMove) -> None:
-        """Applies the given move to the internal board state."""
-        if not isinstance(move, ChessMove):
-            raise TypeError("apply_move requires a ChessMove object")
-        self.__apply_move(byref(self.board_state.board_state_impl), move)
+        return self.board_state
 
-    def ai_move(self, difficulty: int) -> None:
-        """
-        Requests the C++ AI to make a move based on the current board state.
-        The difficulty parameter will influence the AI's search depth and time.
-        """
-        if self.__ai_state is None:
-             raise RuntimeError("AI state is not initialized. Cannot perform AI move.")
-        self.__ai_move(self.__ai_state, byref(self.board_state.board_state_impl), c_int32(difficulty))
+    def ai_move(self, difficulty: int = 3):
+        """ Asks the C++ AI to calculate and apply its best move using the EngineHandle API. """
+        if not self._lib: raise RuntimeError("Library not loaded.")
+        if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
 
-    def move_to_str(self, move: ChessMove) -> str:
-        """Provides a basic string representation of a move."""
-        try:
-            start_piece = self.board_state.pieces[move.start_position.rank][move.start_position.file]
-            piece_type = start_piece.piece_type
-            piece_str = ["?", "P", "N", "B", "R", "Q", "K"][piece_type]
-        except (IndexError, KeyError):
-            piece_str = "?"
+        # Pass handle, difficulty. Callback is null (0) for now.
+        success = self._lib.engine_ai_move(self._engine_handle, c_int32(difficulty), 0)
+        if not success:
+            # Log error? C++ side should print errors.
+            print(f"[PYTHON WARNING] engine_ai_move returned false.")
+            # Consider if the local board state should be marked invalid or re-fetched
 
-        return f"{piece_str}: {move}"
+        # --- IMPORTANT: Update local board state copy after C++ modifies it ---
+        self._update_local_board_state()
 
-    def free_memory(self) -> None:
-        """
-        Explicitly frees the C++ AI state memory.
-        Called automatically when using the context manager protocol.
-        """
-        if self.__ai_state is not None:
-            self.__free_ai_state(self.__ai_state)
-            self.__ai_state = None
 
-    def __enter__(self) -> Self:
-        """Enter the runtime context related to this object."""
+    def evaluate_board(self) -> float:
+        """ Gets the static evaluation of the current board state (if available in API). """
+        if not self._lib: raise RuntimeError("Library not loaded.")
+        if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
+
+        # Check if the evaluate function exists in the loaded library
+        if hasattr(self._lib, 'engine_evaluate_board'):
+            # Define argtypes if not done globally (safer here)
+            self._lib.engine_evaluate_board.argtypes = [c_void_p]
+            self._lib.engine_evaluate_board.restype = c_double
+            return self._lib.engine_evaluate_board(self._engine_handle)
+        else:
+            print("Warning: engine_evaluate_board function not found in C API.")
+            return 0.0 # Return neutral score
+
+    def cancel_search(self):
+        """ Signals the C++ engine to stop the current search using the EngineHandle API. """
+        if not self._lib: raise RuntimeError("Library not loaded.")
+        if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
+        print("Requesting search cancellation...")
+        self._lib.engine_cancel_search(self._engine_handle)
+
+
+    # --- Context Manager Methods ---
+    def __enter__(self):
+        """Allows using the engine with a 'with' statement."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Exit the runtime context related to this object, ensuring cleanup."""
-        self.free_memory()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Ensures resources are cleaned up when exiting a 'with' block."""
+        self.close()
+
+    def close(self):
+        """ Frees the C++ EngineHandle. """
+        print("Closing ChessEngine...")
+        if hasattr(self, '_lib') and self._lib and hasattr(self, '_engine_handle') and self._engine_handle:
+            if hasattr(self._lib, 'engine_destroy'):
+                print(f"Destroying engine handle (pointer: {self._engine_handle})...")
+                try:
+                    self._lib.engine_destroy(self._engine_handle)
+                except Exception as e:
+                    print(f"  Warning: Error calling engine_destroy: {e}")
+            else:
+                 print("  Warning: engine_destroy function not found in library.")
+            self._engine_handle = None # Mark as destroyed
+
+        print("ChessEngine closed.")
+
+    # --- Helper Methods for Display/Debugging ---
+    def _square_to_str(self, pos: BoardPosition) -> str:
+        """Converts a BoardPosition to algebraic notation (e.g., 'e4')."""
+        if not (0 <= pos.rank < 8 and 0 <= pos.file < 8):
+             return "??"
+        return chr(ord('a') + pos.file) + str(pos.rank + 1)
+
+    def move_to_str(self, move: ChessMove) -> str:
+        """Converts a ChessMove to a string representation using the C API."""
+        if not self._lib: return "ERR! (No Lib)"
+        if not self._engine_handle: return "ERR! (No Handle)"
+        if not hasattr(self._lib, 'engine_move_to_str'): return "ERR! (No Func)"
+
+        buffer_size = 10 # Max SAN length is usually less (e.g., O-O-O# or e8=Q#)
+        move_str_buffer = create_string_buffer(buffer_size)
+
+        try:
+            # Pass move by reference (pointer)
+            success = self._lib.engine_move_to_str(self._engine_handle, byref(move), move_str_buffer, buffer_size)
+            if success:
+                return move_str_buffer.value.decode('utf-8')
+            else:
+                # C function failed or buffer was too small
+                partial_str = move_str_buffer.value.decode('utf-8', errors='ignore')
+                print(f"Warning: engine_move_to_str failed or buffer too small. Partial: '{partial_str}'")
+                # Fallback to basic coords if SAN fails
+                start_sq = self._square_to_str(move.start_position)
+                target_sq = self._square_to_str(move.target_position)
+                return f"{start_sq}{target_sq}?" # Indicate failed SAN conversion
+        except Exception as e:
+            print(f"Error calling engine_move_to_str: {e}")
+            return "ERR!"
+
+
+    def print_board(self):
+        """Prints a simple text representation of the current board state."""
+        if self.board_state is None: # Check the local copy
+            print("Board state not initialized.")
+            return
+
+        state = self.board_state
+        piece_map = {
+            # White pieces
+            (PieceType.PAWN, Player.WHITE): "P", (PieceType.KNIGHT, Player.WHITE): "N",
+            (PieceType.BISHOP, Player.WHITE): "B", (PieceType.ROOK, Player.WHITE): "R",
+            (PieceType.QUEEN, Player.WHITE): "Q", (PieceType.KING, Player.WHITE): "K",
+            # Black pieces
+            (PieceType.PAWN, Player.BLACK): "p", (PieceType.KNIGHT, Player.BLACK): "n",
+            (PieceType.BISHOP, Player.BLACK): "b", (PieceType.ROOK, Player.BLACK): "r",
+            (PieceType.QUEEN, Player.BLACK): "q", (PieceType.KING, Player.BLACK): "k",
+        }
+        print("\n  a b c d e f g h")
+        print(" +-----------------+")
+        for r in range(7, -1, -1): # Print from rank 8 down to 1
+            print(f"{r+1}|", end="")
+            for c in range(8): # Files a to h
+                piece = state.pieces[r][c]
+                char = piece_map.get((piece.type, piece.piece_player), ".") # Get char or '.' if empty
+                print(f" {char}", end="")
+            print(f" |{r+1}")
+        print(" +-----------------+")
+        print("  a b c d e f g h")
+
+        # Print game state info
+        player_str = "White" if state.current_player == Player.WHITE else "Black"
+        status_map = {
+            GameStatus.NORMAL: "Normal", GameStatus.DRAW: "Draw",
+            GameStatus.CHECKMATE: "Checkmate", GameStatus.RESIGNED: "Resigned",
+            GameStatus.DRAW_BY_REPETITION: "Draw by Repetition/50-Move/etc." # Combine draw types for simplicity
+        }
+        status_str = status_map.get(state.status, f"Unknown ({state.status})")
+        print(f"Turn: {player_str}")
+        print(f"Status: {status_str}")
+        print(f"White in Check: {bool(state.in_check[Player.WHITE])}")
+        print(f"Black in Check: {bool(state.in_check[Player.BLACK])}")
+        print(f"Can Claim Draw: {bool(state.can_claim_draw)}")
+        print(f"50-Move Counter: {state.turns_since_last_capture_or_pawn // 2}") # Show full moves
+
+        # Optional: Print Castling Rights
+        wc = state.can_castle
+        castle_str = f"Castling: W:(K{'✓' if wc[0] else '✗'} Q{'✓' if wc[1] else '✗'}) B:(K{'✓' if wc[2] else '✗'} Q{'✓' if wc[3] else '✗'})"
+        print(castle_str)
+
+        # Optional: Print En Passant Targets
+        ep_targets = []
+        for i in range(16):
+            if state.en_passant_valid[i]:
+                rank = 2 if i < 8 else 5 # Rank where the capturing pawn *lands*
+                file = i % 8
+                # Need to construct the target square string (e.g., e3 or e6)
+                ep_sq_str = chr(ord('a') + file) + str(rank + 1)
+                ep_targets.append(ep_sq_str)
+        if ep_targets:
+            print(f"En Passant Target(s): {', '.join(ep_targets)}")
+
+
+# --- Helper functions (outside class) --- (Keep target_for_move as it was)
+def target_for_move(move: ChessMove) -> tuple[int, int] | None:
+    """
+    Calculates the target (rank, file) tuple for a move, handling castling.
+    Useful for highlighting squares in a UI.
+    """
+    if move.type == MoveType.CASTLE:
+        # Determine king's target square based on side
+        king_start_file = 4 # King always starts on file 4 (e)
+        king_target_file = 6 if move.target_position.file > king_start_file else 2 # Target file g or c
+        return (move.start_position.rank, king_target_file) # King's final square
+    elif move.type == MoveType.CLAIM_DRAW or move.type == MoveType.RESIGN:
+        # These moves don't have a target square on the board
+        raise ValueError("Cannot get target square for Resign or Claim Draw moves.")
+    else:
+        # Normal moves use the move's target position
+        return (move.target_position.rank, move.target_position.file)
+
+
+# Example usage (if run directly)
+if __name__ == "__main__":
+    # --- Configuration ---
+    # Adjust these paths as needed
+    DEFAULT_LIB_PATH = "../build/src/libchess_cpp.so" # Example for Linux build
+    DEFAULT_MODEL_PATH = "../models/model-small.onnx" # Example model path
+
+    lib_path = os.getenv("CHESS_LIB_PATH", DEFAULT_LIB_PATH)
+    model_path = os.getenv("CHESS_MODEL_PATH", DEFAULT_MODEL_PATH)
+
+    print("--- Chess Engine Python Wrapper Test ---")
+    print(f"Using Library: {os.path.abspath(lib_path)}")
+    print(f"Using Model: {os.path.abspath(model_path)}")
+
+    try:
+        with ChessEngine(lib_path, model_path) as engine:
+            engine.print_board()
+            # print(f"Initial Evaluation: {engine.evaluate_board():.2f}") # Evaluate might not exist
+
+            # Get and print valid moves for the initial position
+            valid_moves = engine.get_valid_moves()
+            print(f"\nValid moves ({len(valid_moves)}):")
+            move_strs = [engine.move_to_str(m) for m in valid_moves]
+            print(", ".join(move_strs[:20]) + ("..." if len(move_strs) > 20 else "")) # Print first 20
+
+            # Example: Make the first valid move (e.g., e2e4)
+            if valid_moves:
+                # Find e2e4 using the new move_to_str
+                move_to_make = next((m for m in valid_moves if engine.move_to_str(m).startswith('e2e4')), None)
+                if move_to_make is None and valid_moves: # If e2e4 not found, take the first valid one
+                     move_to_make = valid_moves[0]
+
+                if move_to_make:
+                    print(f"\nApplying move: {engine.move_to_str(move_to_make)}")
+                    engine.apply_move(move_to_make)
+                    engine.print_board()
+                    # print(f"Evaluation after move: {engine.evaluate_board():.2f}")
+
+                    # Example: Let AI make a move
+                    print("\nAI is thinking...")
+                    engine.ai_move(difficulty=3) # Use moderate difficulty
+                    print("AI has moved.")
+                    engine.print_board()
+                    # print(f"Evaluation after AI move: {engine.evaluate_board():.2f}")
+                else:
+                    print("\nCould not find a valid move to apply.")
+
+
+            else:
+                print("\nNo valid moves from initial position? (Error)")
+
+    except FileNotFoundError as e:
+        print(f"\nError: Required file not found.")
+        print(e)
+        print("Please ensure the library and model paths are correct.")
+        print("You might need to build the C++ project first (e.g., in ../build).")
+    except (RuntimeError, OSError, AttributeError) as e:
+        print(f"\nAn error occurred: {e}")
+        print("Check C++ build, library paths, and function signatures.")
+        print(traceback.format_exc()) # Print traceback for these errors too
+    except Exception as e:
+        print(f"\nAn unexpected error occurred: {e}")
+        print(traceback.format_exc()) # Print traceback
+
+    print("\n--- Test Finished ---")
+

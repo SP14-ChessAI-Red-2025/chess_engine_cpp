@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 import torch.onnx
+from torch import Tensor
 import onnx
 import onnxruntime as ort
 import numpy as np
@@ -11,40 +12,88 @@ import os
 import sys
 
 # --- Define the NNUE model structure ---
-# IMPORTANT: Updated to match the layer dimensions from the provided image.
+# This class implements the architecture provided in the reference code block:
+# Input(feature_dim) -> Embed(embed_dim) -> Linear(hidden_dim) -> ReLU -> Dropout ->
+# -> Linear(hidden_dim // 2) -> ReLU -> Dropout -> Linear(1)
 class NNUE(nn.Module):
-    # Parameters based on image:
-    # Layer 1 Out: 128 (This becomes embed_dim)
-    # Layer 2 Out: 256 (Hidden Dim 1)
-    # Layer 3 Out: 128 (Hidden Dim 2)
-    # Layer 4 Out: 1 (Output Dim)
-    def __init__(self, input_size=768, embed_dim=128, hidden1_dim=256, hidden2_dim=128):
+    # Parameters based on the reference structure:
+    # feature_dim: Input feature size (e.g., 768)
+    # embed_dim: Output size of EmbeddingBag (e.g., 256)
+    # hidden_dim: Output size of the first hidden layer (e.g., 32)
+    # Layer sizes: 768 -> 256 -> 32 -> 16 -> 1
+    def __init__(self, feature_dim: int = 768, embed_dim: int = 256, hidden1_dim: int = 32, dropout_prob: float = 0.4):
+        """
+        Initializes the NNUE model layers based on the reference architecture.
+
+        Args:
+            feature_dim (int): The total number of unique input features. Default: 768.
+            embed_dim (int): The dimension of the embedding layer. Default: 256.
+            hidden_dim (int): The dimension of the first hidden layer. The second hidden
+                              layer will have dimension hidden_dim // 2. Default: 32.
+            dropout_prob (float): The dropout probability used after ReLU activations
+                                  in hidden layers. Default: 0.4.
+        """
         super(NNUE, self).__init__()
+
+        hidden2_dim = hidden1_dim // 2 # Calculate the size of the second hidden layer
+
         # Layer 1: Input (EmbeddingBag)
-        # Image: weight (768x128) -> num_embeddings=768, embedding_dim=128
-        self.input_layer = nn.EmbeddingBag(input_size, embed_dim, mode='sum', sparse=False)
+        # Input: feature_dim, Output: embed_dim
+        self.input_layer = nn.EmbeddingBag(feature_dim, embed_dim, mode='sum', sparse=False)
 
-        # Layer 2: Hidden Linear 1
-        # Image: weight (256x128), bias(256) -> in=128, out=256
+        # Layer 2: Hidden Linear 1 + Activation + Dropout
+        # Input: embed_dim, Output: hidden_dim
         self.hidden1 = nn.Linear(embed_dim, hidden1_dim)
+        self.relu1 = nn.ReLU()
+        self.dropout1 = nn.Dropout(p=dropout_prob)
 
-        # Layer 3: Hidden Linear 2
-        # Image: weight (128x256), bias(128) -> in=256, out=128
+        # Layer 3: Hidden Linear 2 + Activation + Dropout
+        # Input: hidden_dim, Output: hidden2_dim (hidden_dim // 2)
         self.hidden2 = nn.Linear(hidden1_dim, hidden2_dim)
+        self.relu2 = nn.ReLU()
+        self.dropout2 = nn.Dropout(p=dropout_prob)
 
         # Layer 4: Output Linear
-        # Image: weight (1x128), bias(1) -> in=128, out=1
+        # Input: hidden2_dim, Output: 1
         self.output = nn.Linear(hidden2_dim, 1)
 
-        print(f"Initialized NNUE with structure: Embed({input_size}>{embed_dim}) -> Linear({embed_dim}>{hidden1_dim}) -> ReLU -> Linear({hidden1_dim}>{hidden2_dim}) -> ReLU -> Linear({hidden2_dim}>1)")
+        print(f"Initialized NNUE with structure: Embed({feature_dim}>{embed_dim}) -> "
+              f"Linear({embed_dim}>{hidden1_dim}) -> ReLU -> Dropout({dropout_prob}) -> "
+              f"Linear({hidden1_dim}>{hidden2_dim}) -> ReLU -> Dropout({dropout_prob}) -> "
+              f"Linear({hidden2_dim}>1)")
 
-    def forward(self, feature_indices, offsets):
-        # feature_indices: 1D tensor of active feature indices for the batch
-        # offsets: 1D tensor indicating the start index of each sample in feature_indices
-        x = self.input_layer(feature_indices, offsets)
-        x = torch.relu(self.hidden1(x)) # Apply activation after hidden1
-        x = torch.relu(self.hidden2(x)) # Apply activation after hidden2
-        x = self.output(x) # Output layer
+    def forward(self, feature_indices: Tensor, offsets: Tensor = None) -> Tensor:
+        """
+        Defines the forward pass of the NNUE model.
+
+        Args:
+            feature_indices (Tensor): A 1D tensor containing the indices of all active features
+                                      across the entire batch, concatenated together.
+            offsets (Tensor, optional): A 1D tensor indicating the starting index in
+                                         `feature_indices` for each sample in the batch.
+                                         Starts with 0. Required if batch size > 1.
+                                         Defaults to None, assuming a single sample if omitted.
+
+        Returns:
+            Tensor: The output of the network (e.g., evaluation score) for each sample in the batch.
+                    Shape: (batch_size, 1)
+        """
+        # 1. Input processing
+        x = self.input_layer(feature_indices, offsets=offsets) # Shape: (batch_size, embed_dim)
+
+        # 2. First hidden layer block
+        x = self.hidden1(x)
+        x = self.relu1(x)
+        x = self.dropout1(x) # Shape: (batch_size, hidden_dim)
+
+        # 3. Second hidden layer block
+        x = self.hidden2(x)
+        x = self.relu2(x)
+        x = self.dropout2(x) # Shape: (batch_size, hidden_dim // 2)
+
+        # 4. Output layer
+        x = self.output(x) # Shape: (batch_size, 1)
+
         return x
 
 # --- Main Conversion Function ---
@@ -191,13 +240,13 @@ if __name__ == "__main__":
 
     # Updated arguments to match the new NNUE structure based on the image
     parser.add_argument("--input_size", type=int, default=768,
-                        help="Input dimension (feature vocabulary size) (default: 768).")
+                        help="Input dimension (feature vocabulary size).")
     parser.add_argument("--embed_dim", type=int, default=128,
-                        help="Embedding dimension (output of first layer) (default: 128).")
+                        help="Embedding dimension (output of first layer).")
     parser.add_argument("--hidden1_dim", type=int, default=256,
-                        help="Output dimension of the first hidden layer (default: 256).")
+                        help="Output dimension of the first hidden layer.")
     parser.add_argument("--hidden2_dim", type=int, default=128,
-                        help="Output dimension of the second hidden layer (default: 128).")
+                        help="Output dimension of the second hidden layer.")
     parser.add_argument("--opset", type=int, default=11,
                         help="ONNX opset version to use for export (default: 11).")
     parser.add_argument("--no_verify", action="store_true",

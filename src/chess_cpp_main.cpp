@@ -10,6 +10,7 @@
 
 int main(int argc, char* argv[]) { // Allow command-line argument for model path
     auto board = chess::board_state::initial_board_state();
+    chess::previous_board_states game_history;
     std::vector<chess::chess_move> moves;
 
     try {
@@ -42,7 +43,7 @@ int main(int argc, char* argv[]) { // Allow command-line argument for model path
         // Example: Make one AI move
         if (board.status == chess::game_status::normal) {
             std::cout << "Requesting AI move..." << std::endl;
-            ai_player.make_move(board, 5); // Use a default difficulty for testing
+            ai_player.make_move(board, 5, game_history); // Use a default difficulty for testing
             std::cout << "AI move applied. New board state status: " << static_cast<int>(board.status) << std::endl;
         }
 

@@ -21,6 +21,8 @@ import h5py
 import json
 import re
 
+from cython_feature_extractor import board_to_features_cython
+
 TOTAL_FEATURES = 768
 FEATURES_PER_COLOR = TOTAL_FEATURES // 2
 PIECE_TYPES = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]
@@ -29,7 +31,7 @@ DEFAULT_MIN_PLY = 8
 
 # --- NNUE Model Definition ---
 class NNUE(nn.Module):
-    def __init__(self, feature_dim=TOTAL_FEATURES, embed_dim=128, hidden_dim=256, dropout_prob=0.1):
+    def __init__(self, feature_dim=TOTAL_FEATURES, embed_dim=256, hidden_dim=32, dropout_prob=0.4):
         """
         NNUE Model Architecture with Dropout:
         - Input Layer: EmbeddingBag for sparse input features.
@@ -54,50 +56,21 @@ class NNUE(nn.Module):
         self.output = nn.Linear(hidden_dim // 2, 1)
 
     def forward(self, features_indices, offsets=None):
-        """
-        Forward pass of the NNUE model.
-        :param features_indices: Sparse feature indices.
-        :param offsets: Offsets for EmbeddingBag.
-        :return: Evaluation score (scalar).
-        """
-        # Input layer
         x = self.input_layer(features_indices, offsets=offsets)
-
-        # Hidden layers with dropout
         x = self.relu1(self.hidden1(x))
-        x = self.dropout1(x)  # Apply dropout
+        x = self.dropout1(x)
         x = self.relu2(self.hidden2(x))
-        x = self.dropout2(x)  # Apply dropout
-
-        # Output layer
+        x = self.dropout2(x)
         x = self.output(x)
         return x
-
+    
 # --- Feature Extraction (for PGN processing) ---
 def extract_features(board: chess.Board) -> list[int]:
     """
     Extracts feature indices for a simple 768-feature NNUE input layer.
     """
-    indices = []
-    for piece_type in PIECE_TYPES:
-        piece_index = PIECE_TO_INDEX[piece_type]
-        base_index = piece_index * 64
-        for square in board.pieces(piece_type, chess.WHITE):
-            feature_index = base_index + square
-            if 0 <= feature_index < FEATURES_PER_COLOR:
-                indices.append(feature_index)
-    black_offset = FEATURES_PER_COLOR
-    for piece_type in PIECE_TYPES:
-        piece_index = PIECE_TO_INDEX[piece_type]
-        base_index = piece_index * 64 + black_offset
-        for square in board.pieces(piece_type, chess.BLACK):
-            feature_index = base_index + square
-            if FEATURES_PER_COLOR <= feature_index < TOTAL_FEATURES:
-                indices.append(feature_index)
-
-    if board.king(chess.WHITE) is None or board.king(chess.BLACK) is None:
-        return [] # Invalid position if a king is missing
-    return indices
+    features = board_to_features_cython(board)
+    return features
 
 # --- PGN Iterable Dataset ---
 class IterablePgnDataset(IterableDataset):
@@ -208,17 +181,19 @@ class IterablePgnDataset(IterableDataset):
 
 # --- HDF5 Iterable Dataset ---
 class IterableHdf5Dataset(IterableDataset):
-    def __init__(self, hdf5_files: list[str], is_validation: bool = False, sample_rate=1.0):
+    def __init__(self, hdf5_files: list[str], is_validation: bool = False, sample_rate=1.0, split_ratio=0.9):
         """
         PyTorch IterableDataset for streaming data from multiple HDF5 files.
         :param hdf5_files: List of HDF5 file paths.
-        :param is_validation: If True, all workers process the validation set.
+        :param is_validation: If True, this dataset is for validation.
         :param sample_rate: Fraction of data to include (default: 1.0, i.e., no sampling).
+        :param split_ratio: Ratio of data to use for training (default: 0.9 for training, 0.1 for validation).
         """
         super().__init__()
         self.hdf5_files = hdf5_files
         self.is_validation = is_validation
         self.sample_rate = sample_rate
+        self.split_ratio = split_ratio
         if not self.hdf5_files:
             raise ValueError("No HDF5 files provided to IterableHdf5Dataset.")
         print(f"IterableHdf5Dataset initialized with {len(self.hdf5_files)} HDF5 files.")
@@ -243,12 +218,13 @@ class IterableHdf5Dataset(IterableDataset):
                     num_samples_in_file = len(outcomes_dset)
 
                     for idx in range(num_samples_in_file):
-                        # Assume features are stored as variable-length integers
-                        features = features_dset[idx]
-                        outcome = outcomes_dset[idx]
-                        # Yield directly, collation handles tensor conversion
-                        if random.random() <= self.sample_rate:  # Apply sampling
-                            yield features.tolist(), float(outcome)
+                        # Determine if this sample belongs to training or validation
+                        if (hash(idx) % 100 < self.split_ratio * 100) != self.is_validation:
+                            # Apply sampling
+                            if random.random() <= self.sample_rate:
+                                features = features_dset[idx]
+                                outcome = outcomes_dset[idx]
+                                yield features.tolist(), float(outcome)
 
             except KeyError as e:
                 print(f"Error: Missing dataset '{e}' in file {hdf5_path}. Skipping file.", file=sys.stderr)
@@ -413,54 +389,74 @@ class JsonDataset(Dataset):
 
 # Define IterableJsonDataset before train_model
 class IterableJsonDataset(IterableDataset):
-    def __init__(self, json_path, sample_rate=1.0):
+    def __init__(self, json_path, sample_rate=1.0, is_validation=False, split_ratio=0.9):
         """
         PyTorch IterableDataset for streaming data directly from a large JSON file.
+        Includes train/validation split logic.
         :param json_path: Path to the JSON file containing evaluations.
         :param sample_rate: Fraction of data to include (default: 1.0, i.e., no sampling).
+        :param is_validation: If True, yield samples for the validation set.
+        :param split_ratio: Ratio of data to use for training (0.0 to 1.0).
         """
         super().__init__()
         self.json_path = json_path
         self.sample_rate = sample_rate
+        self.is_validation = is_validation
+        self.split_ratio = split_ratio
+        if not 0 <= split_ratio <= 1:
+            raise ValueError("split_ratio must be between 0 and 1")
+        print(f"IterableJsonDataset initialized for {'validation' if is_validation else 'training'}.")
 
     def parse_json_line(self, line):
         """
         Parse a single line of JSON and extract features and evaluation.
+        Applies clipping.
         :param line: A JSON string representing a single position.
-        :return: (features, evaluation) tuple.
+        :return: (features, evaluation) tuple or None if parsing/extraction fails.
         """
-        data = json.loads(line)
-        fen = data["fen"]
-        evals = data.get("evals", [])
-        if evals:
-            best_eval = evals[0]
-            pvs = best_eval.get("pvs", [])
-            if pvs:
-                cp = pvs[0].get("cp")
-                mate = pvs[0].get("mate")
-                if cp is not None:
-                    evaluation = cp / 100.0
-                elif mate is not None:
-                    evaluation = 10000 if mate > 0 else -10000
-                else:
-                    return None
+        try:
+            data = json.loads(line)
+            fen = data["fen"]
+            evals = data.get("evals", [])
+            if evals:
+                best_eval = evals[0]
+                pvs = best_eval.get("pvs", [])
+                if pvs:
+                    cp = pvs[0].get("cp")
+                    mate = pvs[0].get("mate")
+                    if cp is not None:
+                        evaluation = cp / 100.0
+                    elif mate is not None:
+                        evaluation = 10.0 if mate > 0 else -10.0
+                    else:
+                        return None
 
-                if abs(evaluation) > 10:
-                    evaluation = 10 if evaluation > 0 else -10
+                    # Clip evaluation
+                    if abs(evaluation) > 10.0:
+                        evaluation = 10.0 if evaluation > 0 else -10.0
 
-                board = chess.Board(fen)
-                features = self.extract_features(board)
-                if features:
-                    return features, evaluation
-        return None
+                    board = chess.Board(fen)
+                    features = self.extract_features(board)
+                    if features:
+                        return features, evaluation
+            return None
+        except (json.JSONDecodeError, KeyError, IndexError):
+            return None
 
     def __iter__(self):
         """
-        Iterate over the JSON file line by line, applying sampling.
+        Iterate over the JSON file line by line, applying sampling and train/val split.
         """
+        line_number = 0
         with open(self.json_path, "r", encoding="utf-8") as f:
             for line in f:
-                if random.random() <= self.sample_rate:  # Apply sampling
+                belongs_to_train = (hash(line_number) % 100 < self.split_ratio * 100)
+                line_number += 1
+
+                if belongs_to_train == self.is_validation:
+                    continue
+
+                if random.random() <= self.sample_rate:
                     result = self.parse_json_line(line)
                     if result:
                         yield result
@@ -492,14 +488,12 @@ class IterableJsonDataset(IterableDataset):
         return indices
 
 # Ensure train_model is defined after IterableJsonDataset
-def train_model(input_path, val_path, train_data_type, val_data_type, model_save_path, load_model_path=None, epochs=10, batch_size=1024, lr=0.001, num_data_workers=12, sample_rate=1.0):
+def train_model(input_path, model_save_path, train_data_type, load_model_path=None, epochs=10, batch_size=1024, lr=0.001, num_data_workers=12, sample_rate=1.0):
     """
-    Main training loop with separate data types for training and validation.
+    Main training loop with training and validation datasets derived from the same data type.
     :param input_path: Path to the training dataset (JSON or HDF5).
-    :param val_path: Path to the validation dataset (PGN).
-    :param train_data_type: Data type for training ('json' or 'hdf5').
-    :param val_data_type: Data type for validation ('pgn').
     :param model_save_path: Path to save the trained model.
+    :param train_data_type: Data type for training ('json' or 'hdf5').
     :param load_model_path: Path to load a pre-trained model (optional).
     :param epochs: Number of training epochs.
     :param batch_size: Batch size.
@@ -510,39 +504,45 @@ def train_model(input_path, val_path, train_data_type, val_data_type, model_save
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Initialize datasets
+    # Initialize datasets 
     train_dataset = None
     val_dataset = None
 
-    # Training dataset
+    # Initialize variables for early stopping
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
+    patience = 5
+    best_model_path = model_save_path.replace('.pt', '_best.pt').replace('.pth', '_best.pth')
+
+    # Training and validation datasets
     if train_data_type == 'json':
         print(f"Loading training data from JSON file: {input_path}")
         train_dataset = IterableJsonDataset(input_path, sample_rate=sample_rate)
+        val_dataset = IterableJsonDataset(input_path, sample_rate=sample_rate, is_validation=True, split_ratio=0.9)  # Use same file for validation with different split
     elif train_data_type == 'hdf5':
         print(f"Loading training data from HDF5 files in: {input_path}")
         hdf5_files = sorted([os.path.join(input_path, f) for f in os.listdir(input_path) if f.lower().endswith((".hdf5", ".h5"))])
         if not hdf5_files:
             print(f"Error: No .hdf5 or .h5 files found in {input_path}")
             return
-        train_dataset = IterableHdf5Dataset(hdf5_files, is_validation=False, sample_rate=sample_rate)
+        # Training dataset (90%)
+
+        train_dataset = IterableHdf5Dataset(
+            hdf5_files=hdf5_files,
+            is_validation=False,
+            sample_rate=sample_rate,
+            split_ratio=0.9
+        )
+
+        # Validation dataset (10%)
+        val_dataset = IterableHdf5Dataset(
+            hdf5_files=hdf5_files,
+            is_validation=True,
+            sample_rate=sample_rate,
+            split_ratio=0.9
+        )
     else:
         print(f"Error: Unsupported training data type '{train_data_type}'.")
-        return
-
-    # Validation dataset
-    if val_data_type == 'pgn':
-        print(f"Loading validation data from PGN files in: {val_path}")
-        pgn_files = []
-        if os.path.isdir(val_path):
-            pgn_files = sorted([os.path.join(val_path, f) for f in os.listdir(val_path) if f.lower().endswith((".pgn", ".pgn.zst"))])
-        elif os.path.isfile(val_path) and val_path.lower().endswith((".pgn", ".pgn.zst")):
-            pgn_files = [val_path]
-        if not pgn_files:
-            print(f"Error: No PGN or PGN.ZST files found at path: {val_path}")
-            return
-        val_dataset = IterablePgnDataset(pgn_files, min_ply=DEFAULT_MIN_PLY, is_validation=True, sample_rate=sample_rate)
-    else:
-        print(f"Error: Unsupported validation data type '{val_data_type}'.")
         return
 
     # Create DataLoaders
@@ -552,7 +552,7 @@ def train_model(input_path, val_path, train_data_type, val_data_type, model_save
     # Initialize model, optimizer, and scheduler
     model = NNUE().to(device)
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-6)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=2e-5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
 
     # Load model weights if path is provided
@@ -629,24 +629,37 @@ def train_model(input_path, val_path, train_data_type, val_data_type, model_save
             avg_val_loss = val_loss / val_samples if val_samples > 0 else 0
             print(f'Epoch [{epoch+1}/{epochs}] - Validation Loss: {avg_val_loss:.4f}')
 
-        # Save model after each epoch
-        print(f'Saving model after epoch {epoch+1}...')
-        torch.save(model.state_dict(), model_save_path)
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                epochs_no_improve = 0
+                # Save the best model specifically
+                best_model_path = model_save_path.replace('.pt', '_best.pt')
+                torch.save(model.state_dict(), best_model_path)
+                print(f"New best validation loss: {best_val_loss:.4f}. Saved best model to {best_model_path}")
+            else:
+                epochs_no_improve += 1
+                print(f"Validation loss did not improve for {epochs_no_improve} epoch(s).")
 
-        scheduler.step(epoch_loss)  # Adjust learning rate
-        print("-" * 30)
+            if epochs_no_improve >= patience:
+                print(f"Stopping early after {patience} epochs without validation improvement.")
+                break # Exit the epoch loop
 
-    print('Finished Training')
+            # Save model after each epoch
+            print(f'Saving model after epoch {epoch+1}...')
+            torch.save(model.state_dict(), model_save_path)
+
+            scheduler.step(avg_val_loss)  # Adjust learning rate
+            print("-" * 30)
+
+            print('Finished Training')
 
 # --- Main ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train NNUE model using separate training and validation datasets.")
+    parser = argparse.ArgumentParser(description="Train NNUE model using training and validation datasets.")
     parser.add_argument("input_path", help="Path to the training dataset (JSON or HDF5).")
-    parser.add_argument("val_path", help="Path to the validation dataset (PGN).")
     parser.add_argument("model_save_path", help="Path to save the trained PyTorch model (.pt or .pth).")
     parser.add_argument("--load_model_path", type=str, default=None, help="Path to a previously saved PyTorch model (.pt or .pth) to load weights from (optional).")
     parser.add_argument("--train_data_type", choices=['json', 'hdf5'], required=True, help="Type of training data ('json' or 'hdf5').")
-    parser.add_argument("--val_data_type", choices=['pgn'], required=True, help="Type of validation data ('pgn').")
     parser.add_argument("--epochs", type=int, default=20, help="Number of training epochs (default: 20).")
     parser.add_argument("--batch_size", type=int, default=2048, help="Batch size (default: 2048).")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate (default: 0.001).")
@@ -657,10 +670,8 @@ if __name__ == "__main__":
 
     train_model(
         input_path=args.input_path,
-        val_path=args.val_path,
-        train_data_type=args.train_data_type,
-        val_data_type=args.val_data_type,
         model_save_path=args.model_save_path,
+        train_data_type=args.train_data_type,
         load_model_path=args.load_model_path,
         epochs=args.epochs,
         batch_size=args.batch_size,

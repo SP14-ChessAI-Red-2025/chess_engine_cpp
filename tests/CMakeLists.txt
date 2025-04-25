@@ -2,11 +2,8 @@ find_package(GTest CONFIG REQUIRED)
 
 add_executable(chess_cpp_test chess_cpp_test.cpp)
 
-# Link test executable against the core chess library and GTest
 target_link_libraries(chess_cpp_test PRIVATE chess_cpp GTest::gtest_main)
 
-# Copy runtime dependencies (like DLLs/SOs needed by chess_cpp, e.g., onnxruntime)
-# This is often needed on Windows, might be needed on Linux depending on setup
 add_custom_command(TARGET chess_cpp_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy -t $<TARGET_FILE_DIR:chess_cpp_test> $<TARGET_RUNTIME_DLLS:chess_cpp_test>
         COMMAND_EXPAND_LISTS
@@ -14,4 +11,4 @@ add_custom_command(TARGET chess_cpp_test POST_BUILD
 
 include(CTest)
 include(GoogleTest)
-gtest_discover_tests(chess_cpp_test) # Automatically discover tests
+gtest_discover_tests(chess_cpp_test)

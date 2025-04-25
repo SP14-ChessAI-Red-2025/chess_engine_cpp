@@ -53,10 +53,7 @@ def main() -> None:
 
                 chess_engine.apply_move(move)
             else:
-                # AI not implemented in this older example wrapper
-                # chess_engine.ai_move(0)
-                print("AI move not implemented in this example's wrapper.")
-                break # Exit if it's AI's turn and not disabled
+                chess_engine.ai_move(4)
 
             status = chess_engine.board_state.status
 
