@@ -35,3 +35,6 @@ cmake -S . -B build -DNNUE_ENABLED=ON -DCMAKE_BUILD_TYPE=Release -DORT_INSTALL_D
 make -C build VERBOSE=1 chess_cpp # Keep using make with target for now
 
 echo "Build complete."
+
+echo "Building Cython bindings..."
+python src/setup_cython.py build_ext --inplace
