@@ -183,17 +183,19 @@ cdef class ChessEngine:
             row_list = []
             for f in range(8):
                 try:
-                    # This is the line (~179) that caused the error
+                    # --- MODIFIED LINE: Access via pointer directly ---
                     c_piece = c_state_ptr.pieces[r][f]
+                    # --- END MODIFICATION ---
                     row_list.append({'type': <int>c_piece.type, 'player': <int>c_piece.piece_player})
-                # --- ADDED DEBUG (Error Catching) ---
-                except AttributeError as ae:
-                    try:
-                        # Attempt to print the problematic variable's value
-                    except Exception as e_print:
                 except Exception as e:
-                     print(f"[FATAL DEBUG CYTHON] Other Exception accessing pieces: {type(e).__name__}: {e}", file=sys.stderr)
-                     raise e
+                    # Keep detailed error printing just in case
+                    print(f"[FATAL DEBUG CYTHON] Exception accessing pieces via pointer: {type(e).__name__}: {e}", file=sys.stderr)
+                    # Attempt to print the pointer address
+                    try:
+                         print(f"[FATAL DEBUG CYTHON] Value of c_state_ptr: {<Py_ssize_t>c_state_ptr}", file=sys.stderr)
+                    except:
+                        print("[FATAL DEBUG CYTHON] Could not print value of c_state_ptr", file=sys.stderr)
+                    raise e
             py_pieces.append(row_list)
 
         py_state['pieces'] = py_pieces
