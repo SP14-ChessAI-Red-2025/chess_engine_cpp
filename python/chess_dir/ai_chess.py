@@ -234,9 +234,6 @@ class ChessEngine:
                 print(f"Error converting Python buffer to list: {e}")
                 print(traceback.format_exc())
                 moves = []
-        else:
-            # print("[PYTHON DEBUG] No moves reported filled by the second call.")
-
 
         return moves
 

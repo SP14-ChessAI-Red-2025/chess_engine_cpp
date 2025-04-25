@@ -10,7 +10,7 @@ const PieceType = { NONE: 0, PAWN: 1, KNIGHT: 2, BISHOP: 3, ROOK: 4, QUEEN: 5, K
 const GameStatus = { NORMAL: 0, DRAW: 1, CHECKMATE: 2, RESIGNED: 3, DRAW_BY_REPETITION: 4 };
 const GameMode = { SELECT: 0, AI_VS_AI: 1, PLAYER_VS_AI_WHITE: 2, PLAYER_VS_AI_BLACK: 3 };
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'https://chess-engine-cpp.onrender.com';
 
 function App() {
   // --- State Variables ---
