@@ -214,6 +214,8 @@ def trigger_ai_move(): # WORKAROUND ADDED
 
             # === Call engine.ai_move - gets the address of the (potentially unchanged) C++ state ===
             new_state_address = engine.ai_move(difficulty=difficulty) # <-- Gets potentially incorrect state address
+            time.sleep(0.1)
+            
             end_time = time.time()
             app.logger.info(f"AI move calculation attempt finished in {end_time - start_time:.2f} seconds.")
 
