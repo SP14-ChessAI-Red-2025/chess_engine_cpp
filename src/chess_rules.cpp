@@ -52,7 +52,7 @@ namespace chess {
         return chess::ai::is_square_attacked(board, king_pos, (p == player::white) ? player::black : player::white);
     }
 
-    // --- apply_move_impl (Internal Helper - Minimal Changes) ---
+    // --- apply_move_impl ---
     board_state apply_move_impl(board_state board, chess_move move) {
          if (!in_bounds(move.start_position.rank, move.start_position.file) ||
              !in_bounds(move.target_position.rank, move.target_position.file)) {
@@ -135,7 +135,7 @@ namespace chess {
         return board;
     }
 
-    // --- operator== for board_state (Minimal Changes) ---
+    // --- operator== for board_state ---
     bool operator==(const board_state& lhs, const board_state& rhs) {
         for (int r = 0; r < 8; ++r) for (int f = 0; f < 8; ++f) {
             if (lhs.pieces[r][f].type != rhs.pieces[r][f].type || lhs.pieces[r][f].piece_player != rhs.pieces[r][f].piece_player) return false;
@@ -146,7 +146,7 @@ namespace chess {
         return true;
     }
 
-    // --- update_status Function (with History - Minimal Changes) ---
+    // --- update_status Function (with History) ---
     void update_status(board_state& board, previous_board_states& history) {
          if (board.status != game_status::normal) return;
          if (board.turns_since_last_capture_or_pawn >= 150) { board.status = game_status::draw; return; }
@@ -162,10 +162,9 @@ namespace chess {
              board.status = board.in_check[static_cast<int>(board.current_player)] ? game_status::checkmate : game_status::draw; // Stalemate
              board.can_claim_draw = false;
          }
-         // TODO: Add insufficient material check
     }
 
-    // --- apply_move (with History - Minimal Changes) ---
+    // --- apply_move (with History) ---
     void apply_move(board_state& board, chess_move move, previous_board_states& history) {
         if (move.type == move_type::claim_draw) {
             if (board.can_claim_draw) board.status = game_status::draw; // Use generic draw type
@@ -193,12 +192,12 @@ namespace chess {
         update_status(board, history);
    }
 
-    // --- Generate Valid Moves (Minimal changes, ensure logging uses std::cerr) ---
+    // --- Generate Valid Moves ---
     std::vector<chess_move> get_valid_moves(const board_state& board) {
         std::vector<chess_move> pseudo_legal_moves;
         player current_p = board.current_player;
         player opponent_p = (current_p == player::white) ? player::black : player::white;
-        //std::cerr << "DEBUG C++ Rules: get_valid_moves called for player " << static_cast<int>(current_p) << std::endl; // Keep cerr for debug
+        std::cerr << "DEBUG C++ Rules: get_valid_moves called for player " << static_cast<int>(current_p) << std::endl;
 
         auto add_promotions = [&](const board_position& start, const board_position& target, move_type base_type) {
             pseudo_legal_moves.push_back({base_type, start, target, piece_type::queen}); pseudo_legal_moves.push_back({base_type, start, target, piece_type::rook});
@@ -217,9 +216,8 @@ namespace chess {
             piece p = board.pieces[r][f];
             if (p.type == piece_type::none || p.piece_player != current_p) continue;
             board_position start_pos = {r, f};
-            // size_t moves_before_piece = pseudo_legal_moves.size(); // Removed detailed move logging
 
-            if (p.type == piece_type::pawn) { /* ... pawn logic unchanged ... */
+            if (p.type == piece_type::pawn) {
                  int dir = (current_p == player::white) ? 1 : -1; int start_rank = (current_p == player::white) ? 1 : 6; int promotion_rank = (current_p == player::white) ? 7 : 0;
                  auto target1_opt = apply_offset(start_pos, {dir, 0});
                  if (target1_opt && board.pieces[target1_opt->rank][target1_opt->file].type == piece_type::none) {
@@ -228,23 +226,23 @@ namespace chess {
                       if (r == start_rank) { auto target2_opt = apply_offset(start_pos, {2 * dir, 0}); if (target2_opt && board.pieces[target2_opt->rank][target2_opt->file].type == piece_type::none) pseudo_legal_moves.push_back({move_type::normal_move, start_pos, *target2_opt}); }
                  }
                  for (int file_offset : {-1, 1}) { auto capture_target_opt = apply_offset(start_pos, {dir, file_offset}); if (capture_target_opt) { piece target_piece = board.pieces[capture_target_opt->rank][capture_target_opt->file]; if (target_piece.type != piece_type::none && target_piece.piece_player == opponent_p) { if (capture_target_opt->rank == promotion_rank) add_promotions(start_pos, *capture_target_opt, move_type::promotion); else pseudo_legal_moves.push_back({move_type::capture, start_pos, *capture_target_opt}); } int ep_check_rank = (current_p == player::white) ? 4 : 3; int ep_target_rank = (current_p == player::white) ? 5 : 2; int ep_idx = (ep_target_rank == 5) ? (8 + capture_target_opt->file) : capture_target_opt->file; if (r == ep_check_rank && capture_target_opt->rank == ep_target_rank && target_piece.type == piece_type::none && ep_idx >= 0 && ep_idx < 16 && board.en_passant_valid[ep_idx]) pseudo_legal_moves.push_back({move_type::en_passant, start_pos, *capture_target_opt}); } }
-            } else if (p.type == piece_type::knight) { /* ... knight logic unchanged ... */
+            } else if (p.type == piece_type::knight) { 
                  const std::vector<board_offset> knight_offsets={{1,2},{1,-2},{-1,2},{-1,-2},{2,1},{2,-1},{-2,1},{-2,-1}}; for(const auto&o:knight_offsets){auto t=apply_offset(start_pos,o);if(t){piece tp=board.pieces[t->rank][t->file];if(tp.type==piece_type::none)pseudo_legal_moves.push_back({move_type::normal_move,start_pos,*t});else if(tp.piece_player==opponent_p)pseudo_legal_moves.push_back({move_type::capture,start_pos,*t});}}
             } else if (p.type == piece_type::bishop) { generate_sliding_moves(start_pos, {{1,1},{1,-1},{-1,1},{-1,-1}});
             } else if (p.type == piece_type::rook) { generate_sliding_moves(start_pos, {{1,0},{-1,0},{0,1},{0,-1}});
             } else if (p.type == piece_type::queen) { generate_sliding_moves(start_pos, {{1,1},{1,-1},{-1,1},{-1,-1},{1,0},{-1,0},{0,1},{0,-1}});
-            } else if (p.type == piece_type::king) { /* ... king logic + castling unchanged ... */
+            } else if (p.type == piece_type::king) {
                  const std::vector<board_offset>king_offsets={{1,1},{1,-1},{-1,1},{-1,-1},{1,0},{-1,0},{0,1},{0,-1}}; for(const auto&o:king_offsets){auto t=apply_offset(start_pos,o);if(t){piece tp=board.pieces[t->rank][t->file];if(tp.type==piece_type::none)pseudo_legal_moves.push_back({move_type::normal_move,start_pos,*t});else if(tp.piece_player==opponent_p)pseudo_legal_moves.push_back({move_type::capture,start_pos,*t});}} if(!board.in_check[static_cast<int>(current_p)]){int co=(current_p==player::white)?0:2; int cr=(current_p==player::white)?0:7; uint8_t ucr=static_cast<uint8_t>(cr); if(board.can_castle[co]&&board.pieces[cr][5].type==piece_type::none&&board.pieces[cr][6].type==piece_type::none&&!chess::ai::is_square_attacked(board,{ucr,4},opponent_p)&&!chess::ai::is_square_attacked(board,{ucr,5},opponent_p)&&!chess::ai::is_square_attacked(board,{ucr,6},opponent_p))pseudo_legal_moves.push_back({move_type::castle,start_pos,{ucr,6}}); if(board.can_castle[co+1]&&board.pieces[cr][1].type==piece_type::none&&board.pieces[cr][2].type==piece_type::none&&board.pieces[cr][3].type==piece_type::none&&!chess::ai::is_square_attacked(board,{ucr,4},opponent_p)&&!chess::ai::is_square_attacked(board,{ucr,3},opponent_p)&&!chess::ai::is_square_attacked(board,{ucr,2},opponent_p))pseudo_legal_moves.push_back({move_type::castle,start_pos,{ucr,2}}); }
             }
-            // std::cerr << "  DEBUG C++ Rules: Finished piece type " << ... // Removed detailed logging
+            std::cerr << "  DEBUG C++ Rules: Finished piece type " << std::endl;
         } // End file loop
-        // std::cerr << "DEBUG C++ Rules: Finished piece loops..." << std::endl; // Removed
+        std::cerr << "DEBUG C++ Rules: Finished piece loops..." << std::endl;
 
         // Add Special Moves
         size_t moves_before_special = pseudo_legal_moves.size();
         pseudo_legal_moves.push_back({move_type::resign, {}, {}});
         if (board.can_claim_draw) pseudo_legal_moves.push_back({move_type::claim_draw, {}, {}});
-        // std::cerr << "DEBUG C++ Rules: Added " << ... // Removed detailed logging
+        std::cerr << "DEBUG C++ Rules: Added " << std::endl;
 
         // Filter for Legality
         std::vector<chess_move> legal_moves;
@@ -256,16 +254,16 @@ namespace chess {
                  if (!is_player_in_check(next_state, current_p)) { legal_moves.push_back(move); }
             } catch (...) { /* Ignore errors during legality check */ }
         }
-        // std::cerr << "DEBUG C++ Rules: Filtered down to " << legal_moves.size() << " legal moves." << std::endl; // Removed
+        std::cerr << "DEBUG C++ Rules: Filtered down to " << legal_moves.size() << " legal moves." << std::endl;
         return legal_moves;
     }
 
-    // --- board_state::initial_board_state Definition (Unchanged) ---
-    board_state board_state::initial_board_state() noexcept { /* ... unchanged ... */
+    // --- board_state::initial_board_state Definition ---
+    board_state board_state::initial_board_state() noexcept {
         board_state initial_state = {}; player p_w = player::white; player p_b = player::black; piece_type R = piece_type::rook; piece_type N = piece_type::knight; piece_type B = piece_type::bishop; piece_type Q = piece_type::queen; piece_type K = piece_type::king; piece_type P = piece_type::pawn; initial_state.pieces[0][0] = {R, p_w}; initial_state.pieces[0][7] = {R, p_w}; initial_state.pieces[0][1] = {N, p_w}; initial_state.pieces[0][6] = {N, p_w}; initial_state.pieces[0][2] = {B, p_w}; initial_state.pieces[0][5] = {B, p_w}; initial_state.pieces[0][3] = {Q, p_w}; initial_state.pieces[0][4] = {K, p_w}; for (int f = 0; f < 8; ++f) initial_state.pieces[1][f] = {P, p_w}; initial_state.pieces[7][0] = {R, p_b}; initial_state.pieces[7][7] = {R, p_b}; initial_state.pieces[7][1] = {N, p_b}; initial_state.pieces[7][6] = {N, p_b}; initial_state.pieces[7][2] = {B, p_b}; initial_state.pieces[7][5] = {B, p_b}; initial_state.pieces[7][3] = {Q, p_b}; initial_state.pieces[7][4] = {K, p_b}; for (int f = 0; f < 8; ++f) initial_state.pieces[6][f] = {P, p_b}; initial_state.can_castle[0] = true; initial_state.can_castle[1] = true; initial_state.can_castle[2] = true; initial_state.can_castle[3] = true; initial_state.current_player = p_w; initial_state.status = game_status::normal; initial_state.turns_since_last_capture_or_pawn = 0; initial_state.can_claim_draw = false; initial_state.in_check[static_cast<int>(p_w)] = false; initial_state.in_check[static_cast<int>(p_b)] = false; for(auto& flag : initial_state.en_passant_valid) { flag = false; } return initial_state;
     }
 
-     // --- Operator Definitions (Unchanged) ---
+     // --- Operator Definitions ---
      bool board_position::operator==(const board_position& other) const { return rank == other.rank && file == other.file; }
      bool board_position::operator<(const board_position& other) const { if (rank != other.rank) return rank < other.rank; return file < other.file; }
      bool piece::operator==(const piece& other) const { return type == other.type && piece_player == other.piece_player; }

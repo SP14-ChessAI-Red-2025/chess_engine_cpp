@@ -2,7 +2,7 @@
 import React from 'react';
 
 // Base path for images (assuming they are in public/images/)
-const imageBase = '/images/'; // Path relative to the public folder
+const imageBase = '/website/images/';
 
 // Map piece type and player to image filenames
 const pieceImageMap = {

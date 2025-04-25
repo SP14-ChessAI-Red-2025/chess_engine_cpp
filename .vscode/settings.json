@@ -53,6 +53,11 @@
         "format": "cpp",
         "__nullptr": "cpp",
         "__functional_03": "cpp",
-        "target": "cpp"
+        "target": "cpp",
+        "__bit_reference": "cpp",
+        "__string": "cpp",
+        "deque": "cpp",
+        "future": "cpp",
+        "ios": "cpp"
     }
 }
