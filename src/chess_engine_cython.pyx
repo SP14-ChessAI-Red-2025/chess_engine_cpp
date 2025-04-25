@@ -280,7 +280,6 @@ cdef class ChessEngine:
              return "Error"
         return buffer.decode('utf-8', errors='replace')
 
-    # <<< NEW METHOD TO EXPOSE CANCELLATION >>>
     def stop_search(self):
         """Signals the C++ engine to stop the current AI search."""
         self._check_handle() # Ensure handle is valid
@@ -289,7 +288,6 @@ cdef class ChessEngine:
         with nogil:
             engine_cancel_search(self.c_engine_handle)
         print("Cython ChessEngine: Cancel request sent via C API.")
-    # <<< END NEW METHOD >>>
 
     # Context manager methods
     def __enter__(self): return self
