@@ -19,14 +19,24 @@ src_dir_path = os.path.join(project_root, 'src')
 if src_dir_path not in sys.path: sys.path.append(src_dir_path)
 
 try:
-    from chess_dir.ai_chess import ChessEngine, Player, PieceType, GameStatus, MoveType, BoardState, ChessMove
+    # Make sure ai_chess.py has the updated methods returning POINTER(BoardState)
+    from chess_dir.ai_chess import ChessEngine, Player, PieceType, GameStatus, MoveType
 except ImportError as e:
-    print(f"Error importing from chess_dir.ai_chess: {e}"); sys.exit(1)
+    print(f"Error importing ChessEngine/Enums: {e}"); sys.exit(1)
+except AttributeError as e:
+     print(f"Error importing specific ctypes structures (check ai_chess.py or definitions here): {e}"); sys.exit(1)
 
 
 # --- Configuration ---
 LIBRARY_PATH = "build/src/libchess_cpp.so"
 MODEL_PATH = "model/trained_nnue.onnx"
+
+# --- ctypes Structures (Ensure these match ai_chess.py if defined there) ---
+# Assuming they are defined globally here as before
+class CtypesBoardPosition(Structure): _pack_=1; _fields_=[("rank",c_uint8),("file",c_uint8)]
+class CtypesPiece(Structure): _pack_=1; _fields_=[("type",c_int8),("piece_player",c_int8)]
+class CtypesChessMove(Structure): _pack_=1; _fields_=[("type",c_int8),("start_position",CtypesBoardPosition),("target_position",CtypesBoardPosition),("promotion_target",c_int8)]
+class CtypesBoardState(Structure): _pack_=1; _fields_=[("pieces",(CtypesPiece*8)*8),("can_castle",c_bool*4),("in_check",c_bool*2),("en_passant_valid",c_bool*16),("turns_since_last_capture_or_pawn",c_int32),("current_player",c_int8),("status",c_int8),("can_claim_draw",c_bool),("_padding_",c_uint8*3)]
 
 # --- Flask App Setup ---
 app = Flask(__name__)
