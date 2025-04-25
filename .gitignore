@@ -16,3 +16,4 @@ python/chess_dir/ai_chess.cpython-312-x86_64-linux-gnu.so
 old_pyx.txt
 src/chess_engine_cython.html
 src/chess_engine_cython.cpp
+src/chess_engine_cython.html

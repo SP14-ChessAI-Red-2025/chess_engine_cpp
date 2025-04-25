@@ -168,17 +168,41 @@ cdef class ChessEngine:
         cdef int r, f, i
         """Returns the current board state as a Python dictionary."""
         self._check_handle()
+
+        print("[DEBUG CYTHON] Entering board_state getter", file=sys.stderr)
+
         c_state_ptr = engine_get_board_state(self.c_engine_handle)
         if c_state_ptr == NULL: raise RuntimeError("engine_get_board_state returned NULL.")
         memcpy(&c_state_copy, c_state_ptr, sizeof(CBoardState))
+
+        print(f"[DEBUG CYTHON] Type of c_state_copy before loop: {type(c_state_copy)}", file=sys.stderr)
+
         py_state = {}
         py_pieces = []
+
+        print(f"[DEBUG CYTHON] About to loop through pieces. type(c_state_copy) is still {type(c_state_copy)}", file=sys.stderr)
+
         for r in range(8):
             row_list = []
             for f in range(8):
-                c_piece = c_state_copy.pieces[r][f]
-                row_list.append({'type': <int>c_piece.type, 'player': <int>c_piece.piece_player})
+                try:
+                    # This is the line (~179) that caused the error
+                    c_piece = c_state_copy.pieces[r][f]
+                    row_list.append({'type': <int>c_piece.type, 'player': <int>c_piece.piece_player})
+                # --- ADDED DEBUG (Error Catching) ---
+                except AttributeError as ae:
+                    print(f"[FATAL DEBUG CYTHON] AttributeError accessing .pieces! Type of c_state_copy is: {type(c_state_copy)}", file=sys.stderr)
+                    try:
+                        # Attempt to print the problematic variable's value
+                        print(f"[FATAL DEBUG CYTHON] Value of c_state_copy: {c_state_copy!r}", file=sys.stderr)
+                    except Exception as e_print:
+                        print(f"[FATAL DEBUG CYTHON] Could not print value of c_state_copy: {e_print}", file=sys.stderr)
+                    raise ae # Re-raise the original error
+                except Exception as e:
+                     print(f"[FATAL DEBUG CYTHON] Other Exception accessing pieces: {type(e).__name__}: {e}", file=sys.stderr)
+                     raise e
             py_pieces.append(row_list)
+            
         py_state['pieces'] = py_pieces
         py_state['current_player'] = <int>c_state_copy.current_player
         py_state['can_castle'] = [bool(c_state_copy.can_castle[i]) for i in range(4)]
