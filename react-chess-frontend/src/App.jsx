@@ -189,45 +189,106 @@ function App() {
 
   // --- Effect to Automatically Trigger AI Move (Keep as is) ---
   useEffect(() => {
-    // Initial guard conditions
-    if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) {
-      // console.log("useEffect skipped: Initial guards"); // Optional debug log
-      return;
-    }
-
-    // Determine if it *should* be AI's turn based on the current boardState
+     if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) return;
     const isAIsTurn =
       (gameMode === GameMode.AI_VS_AI) ||
       (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) ||
       (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE);
-
-    // console.log(`useEffect Check: gameMode=${gameMode}, currentPlayer=${boardState.current_player}, isAIsTurn=${isAIsTurn}, isLoading=${isLoading}`); // Optional debug log
-
     if (isAIsTurn) {
-      // Use a timeout (keeps the delay, also helps separate trigger logic)
-      const timeoutId = setTimeout(() => {
-        // --- Double Check Inside Timeout ---
-        // Check isLoading AGAIN, as it might have changed between the effect running and the timeout firing.
-        // This ensures we don't trigger if another action started loading in the meantime.
-        if (!isLoading) {
-             console.log(`setTimeout: Triggering AI move. Current player in state should be AI's turn (${boardState.current_player}).`);
-             triggerAiMove();
-        } else {
-            console.log("setTimeout: Skipped AI trigger because isLoading became true.");
-        }
-        // --- End Double Check ---
-      }, 500); // Keep or adjust delay as needed
-
-      // Cleanup function for the timeout
-      return () => {
-          // console.log("useEffect cleanup: Clearing timeout"); // Optional debug log
-          clearTimeout(timeoutId);
-      }
+      // Add a small delay before triggering AI for better UX if desired
+      const timeoutId = setTimeout(triggerAiMove, 500); // e.g., 500ms delay
+      return () => clearTimeout(timeoutId);
     }
-  // Dependencies: boardState, gameMode, isLoading determine WHEN the effect runs.
-  // triggerAiMove is stable due to useCallback, so it can usually be omitted.
-  // If you still face issues, you might need useRef to access the absolute latest state inside setTimeout.
-  }, [boardState, gameMode, isLoading, triggerAiMove]); // Keep triggerAiMove if useCallback isn't perfect or ESLint insists
+  }, [boardState, gameMode, isLoading, triggerAiMove]);
+
+
+  // --- Handle Square Click Logic ---
+  const handleSquareClick = useCallback(async (rank, file) => {
+    // --- Condition Checks (Good) ---
+    if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.AI_VS_AI) return;
+    const isPlayerTurn = playerColor !== null && boardState.current_player === playerColor;
+    if (!isPlayerTurn) return;
+    // --- End Condition Checks ---
+
+    const clickedPiece = boardState.pieces[rank][file];
+
+    if (selectedSquare) { // A piece is already selected
+      const sourceSq = selectedSquare;
+      const targetSq = { rank, file };
+
+      // Find the move object based on current valid moves
+      const move = validMoves.find(m =>
+        m.start.rank === sourceSq.rank && m.start.file === sourceSq.file &&
+        m.target.rank === targetSq.rank && m.target.file === targetSq.file
+      );
+
+      if (move) { // Clicked on a valid target square for the selected piece
+        setIsLoading(true);
+        setStatusMessage("Applying move...");
+        setSelectedSquare(null); // Deselect piece
+        setValidMoves([]); // Clear old moves
+
+        try {
+          // Prepare payload, include current_player for conditional check on backend
+          const movePayload = {
+              start: move.start,
+              target: move.target,
+              promotion: PieceType.NONE, // Default, override if needed
+              current_player: boardState.current_player // Send player making the move
+          };
+          // Handle promotion (assuming default to Queen for now)
+          // TODO: Implement promotion piece selection UI if needed
+          if (move.type === 4 /* Promotion */ && boardState.pieces[sourceSq.rank][sourceSq.file]?.type === PieceType.PAWN) {
+              if (targetSq.rank === 7 || targetSq.rank === 0) {
+                  movePayload.promotion = PieceType.QUEEN; // Default to Queen
+                  console.log("Applying default Queen promotion for move:", move);
+              }
+          }
+
+          // Call the backend API
+          const response = await fetch(`${API_URL}/apply_move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(movePayload) });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Move application failed: ${response.status}`);
+          }
+
+          // --- FIX: Use the response directly ---
+          const newState = await response.json();
+          console.log("Received new state directly from POST /api/apply_move:", newState);
+          setBoardState(newState); // Update state with the direct response
+          setStatusMessage(getGameStatusMessage(newState)); // Update status message
+
+          // Fetch valid moves for the *next* player based on the newState
+          await fetchValidMoves(newState);
+          // --- END FIX ---
+
+        } catch (error) {
+          console.error("Error applying move:", error);
+          setStatusMessage(`Error applying move: ${error.message}`);
+          // Attempt to recover by fetching current state/moves
+          fetchInitialGameState("handleSquareClick-error"); // Fetch both state and moves on error
+        } finally {
+          setIsLoading(false); // Ensure loading is set to false
+        }
+      } else { // Clicked on a square that is NOT a valid target
+        if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
+          // Clicked on another of the player's pieces, select it instead
+          setSelectedSquare({ rank, file });
+        } else {
+          // Clicked on empty square or opponent piece, deselect
+          setSelectedSquare(null);
+        }
+      }
+    } else { // No piece was selected previously
+      if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
+        // Clicked on one of the player's pieces, select it
+        setSelectedSquare({ rank, file });
+      }
+      // Do nothing if clicked empty square or opponent piece when nothing selected
+    }
+  }, [isLoading, boardState, gameMode, playerColor, selectedSquare, validMoves, fetchValidMoves, fetchInitialGameState]); // Added dependencies
+
 
   // --- Calculate Highlight Squares ---
   const getHighlightSquares = useCallback(() => {
@@ -239,28 +300,39 @@ function App() {
 
 
   // --- Render Logic ---
+  const highlightSquares = getHighlightSquares(); // Assumes getHighlightSquares is defined above
+
   return (
-    // This div is now always present and applies the centering styles
+    // This div is now the single top-level element, always rendered
     <div className="App">
       {gameMode === GameMode.SELECT ? (
-        // Render the Selector *inside* the centered App container
+        // Render Selector when gameMode is SELECT
         <GameModeSelector onSelectMode={handleGameModeSelect} />
       ) : (
-        // Render the Game View *inside* the centered App container
+        // Otherwise, render the Game View elements
         // Use a React Fragment <>...</> to group multiple elements
         <>
           <h1>React Chess</h1>
+
+          {/* Timer Display REMOVED - Assuming this is intentional */}
+
+          {/* Game Status */}
           <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
+
+          {/* Board or Loading Message */}
           {boardState && Array.isArray(boardState.pieces) ? (
             <Board
               boardPieces={boardState.pieces}
               onSquareClick={handleSquareClick}
               selectedSquare={selectedSquare}
-              highlightSquares={getHighlightSquares()} // Make sure this function is available
+              // Pass highlightSquares calculated above
+              highlightSquares={highlightSquares}
             />
           ) : (
             <div className="loading">{isLoading ? 'Loading...' : 'Waiting for Server...'}</div>
           )}
+
+          {/* Change Mode Button */}
           <button onClick={returnToModeSelect} disabled={isLoading} style={{ marginTop: '15px' }}>
             Change Mode / Reset
           </button>
