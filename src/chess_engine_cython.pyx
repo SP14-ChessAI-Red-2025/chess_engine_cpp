@@ -20,14 +20,34 @@ class GameStatus: NORMAL=0; DRAW=1; CHECKMATE=2; RESIGNED=3; DRAW_BY_REPETITION=
 
 # --- C Definitions ---
 # Use ctypedef to alias the C++ structs/enums for easier use in Cython
-ctypedef chess.board_position CBoardPosition
-ctypedef chess.piece CPiece
-ctypedef chess.chess_move CChessMove
-ctypedef chess.board_state CBoardState
-ctypedef chess.piece_type CPieceType
-ctypedef chess.move_type CMoveType
-ctypedef chess.player CPlayer
-ctypedef chess.game_status CGameStatus
+cdef extern from "chess_cpp/chess_rules.hpp" namespace "chess":
+    # --- DECLARE C++ types using their C++ names inside the extern block ---
+    ctypedef struct board_position:
+        # uint8_t rank
+        # uint8_t file
+        pass # Often enough just to declare the struct type
+    ctypedef struct piece:
+        # piece_type type       # Example C++ members
+        # player piece_player
+        pass
+    ctypedef struct chess_move:
+        pass
+    ctypedef struct board_state:
+        pass
+    # Assume C++ types compatible with int/char/etc.
+    ctypedef int piece_type # Or char, uint8_t etc. matching C++ definition
+    ctypedef int move_type
+    ctypedef int player
+    ctypedef int game_status
+
+ctypedef board_position CBoardPosition
+ctypedef piece CPiece
+ctypedef chess_move CChessMove
+ctypedef board_state CBoardState
+ctypedef piece_type CPieceType
+ctypedef move_type CMoveType
+ctypedef player CPlayer
+ctypedef game_status CGameStatus
 
 # --- C Function Declarations (from python_api.hpp) ---
 cdef extern from "chess_cpp/python_api.hpp":
@@ -39,7 +59,6 @@ cdef extern from "chess_cpp/python_api.hpp":
     cython.bint engine_apply_move(void* engine_handle_opaque, const CChessMove* move, CBoardState* out_board_state) nogil
     cython.bint engine_ai_move(void* engine_handle_opaque, int difficulty, void* callback) nogil # Callback is NULL
     cython.bint engine_move_to_str(void* engine_handle_opaque, const CChessMove* move, char* buffer, size_t buffer_size) nogil
-    # <<< DECLARE THE CANCELLATION FUNCTION FROM C API >>>
     void engine_cancel_search(void* engine_handle_opaque) nogil
 
 # --- Python Wrapper Classes ---
@@ -144,11 +163,11 @@ cdef class ChessEngine:
 
     @property
     def board_state(self):
-        """Returns the current board state as a Python dictionary."""
-        self._check_handle()
         cdef CBoardState* c_state_ptr
         cdef CBoardState c_state_copy
         cdef int r, f, i
+        """Returns the current board state as a Python dictionary."""
+        self._check_handle()
         c_state_ptr = engine_get_board_state(self.c_engine_handle)
         if c_state_ptr == NULL: raise RuntimeError("engine_get_board_state returned NULL.")
         memcpy(&c_state_copy, c_state_ptr, sizeof(CBoardState))
@@ -231,11 +250,11 @@ cdef class ChessEngine:
         self._check_handle()
         cdef cython.bint success = 0
         cdef CBoardState c_state_after_ai
+        cdef CBoardState* c_state_ptr
         try:
              with nogil: success = engine_ai_move(self.c_engine_handle, difficulty, NULL)
              if not success: print("Warning: engine_ai_move returned false.", file=sys.stderr)
              # Fetch the updated state AFTER ai_move completed
-             cdef CBoardState* c_state_ptr
              with nogil: c_state_ptr = engine_get_board_state(self.c_engine_handle)
              if c_state_ptr == NULL: raise RuntimeError("engine_get_board_state returned NULL after AI move.")
              memcpy(&c_state_after_ai, c_state_ptr, sizeof(CBoardState))
@@ -280,6 +299,7 @@ cdef class ChessEngine:
              return "Error"
         return buffer.decode('utf-8', errors='replace')
 
+    # <<< NEW METHOD TO EXPOSE CANCELLATION >>>
     def stop_search(self):
         """Signals the C++ engine to stop the current AI search."""
         self._check_handle() # Ensure handle is valid
@@ -288,6 +308,7 @@ cdef class ChessEngine:
         with nogil:
             engine_cancel_search(self.c_engine_handle)
         print("Cython ChessEngine: Cancel request sent via C API.")
+    # <<< END NEW METHOD >>>
 
     # Context manager methods
     def __enter__(self): return self
