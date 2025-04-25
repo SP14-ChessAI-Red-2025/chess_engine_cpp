@@ -6,6 +6,10 @@ import threading # Keep for Lock
 import time
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from ctypes import (
+    Structure, POINTER, c_void_p, c_size_t, c_int8, c_uint8, c_int32,
+    c_bool, cast, sizeof
+)
 
 # --- Path Setup ---
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -25,9 +29,31 @@ except ImportError as e:
     print(f"sys.path: {sys.path}")
     sys.exit(1)
 
-# --- Configuration --- (Ensure these paths are correct relative to server.py)
+# --- Configuration ---
 LIBRARY_PATH = "build/src/libchess_cpp.so"
 MODEL_PATH = "model/trained_nnue.onnx" # Make sure this is your model file
+
+# --- ADD ctypes Structures (copied/adapted from ai_chess.py) ---
+class CtypesBoardPosition(Structure):
+    _pack_ = 1
+    _fields_ = [("rank", c_uint8),
+                ("file", c_uint8)]
+
+class CtypesPiece(Structure):
+    _pack_ = 1
+    _fields_ = [("type", c_int8),
+                ("piece_player", c_int8)]
+
+class CtypesBoardState(Structure):
+    _pack_ = 1
+    _fields_ = [("pieces", (CtypesPiece * 8) * 8),
+                ("can_castle", c_bool * 4),
+                ("in_check", c_bool * 2),
+                ("en_passant_valid", c_bool * 16), # Check size/type matches C++
+                ("turns_since_last_capture_or_pawn", c_int32),
+                ("current_player", c_int8),
+                ("status", c_int8),
+                ("can_claim_draw", c_bool)]
 
 # --- Flask App Setup ---
 app = Flask(__name__)
@@ -101,28 +127,66 @@ def moves_to_list(moves):
     return move_list
 
 # --- API Endpoints ---
-
 @app.route('/api/state', methods=['GET'])
 def get_state():
-    """Returns the current board state."""
+    """Returns the current board state by reading from C pointer via ctypes."""
     if not engine:
         app.logger.error("/api/state: Engine not initialized")
         return jsonify({"error": "Chess engine not initialized on server"}), 500
+
     try:
+        address = 0
         with engine_lock:
-             current_state_dict = engine.board_state
+             # Call the NEW Cython property to get the address
+             address = engine.board_state_address
 
-        if current_state_dict is None:
-             app.logger.error("/api/state: engine.board_state returned None")
-             return jsonify({"error": "Engine state is unavailable"}), 500
+        if address == 0:
+             app.logger.error("/api/state: engine.board_state_address returned 0 (likely NULL ptr)")
+             return jsonify({"error": "Engine state pointer is unavailable"}), 500
 
-        print(f"DEBUG TYPE BEFORE JSONIFY: Type={type(current_state_dict)}")
-        
-        return jsonify(current_state_dict)
+        # --- Convert address to ctypes pointer ---
+        try:
+            state_ptr = cast(address, POINTER(CtypesBoardState))
+            # Access the data via pointer.contents
+            c_state = state_ptr.contents
+        except Exception as cast_error:
+             app.logger.error(f"Error casting or accessing ctypes pointer: {cast_error}", exc_info=True)
+             return jsonify({"error": "Failed to interpret engine state pointer"}), 500
+        # --- END Conversion ---
+
+        # --- Build dictionary in Python using ctypes data ---
+        py_state = {}
+        py_pieces = []
+        try:
+            for r in range(8):
+                row_list = []
+                for f in range(8):
+                    # Access ctypes structure fields
+                    c_piece = c_state.pieces[r][f]
+                    row_list.append({'type': c_piece.type, 'player': c_piece.piece_player})
+                py_pieces.append(row_list)
+
+            py_state['pieces'] = py_pieces
+            py_state['current_player'] = c_state.current_player
+            py_state['can_castle'] = list(c_state.can_castle) # Convert C array to list
+            py_state['en_passant_valid'] = list(c_state.en_passant_valid) # Convert C array to list
+            py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn
+            py_state['status'] = c_state.status
+            py_state['can_claim_draw'] = c_state.can_claim_draw
+            py_state['in_check'] = list(c_state.in_check) # Convert C array to list
+
+        except Exception as conversion_error:
+            app.logger.error(f"Error converting ctypes state to dict: {conversion_error}", exc_info=True)
+            return jsonify({"error": "Failed to convert engine state data"}), 500
+        # --- END Building Dictionary ---
+
+        return jsonify(py_state) # Return the dictionary built in Python
 
     except Exception as e:
+        # General error handler
         app.logger.error(f"Error DURING /api/state processing: {type(e).__name__}: {e}", exc_info=True)
         return jsonify({"error": f"Failed to get board state due to server error: {type(e).__name__}"}), 500
+    
 @app.route('/api/moves', methods=['GET'])
 def get_valid_moves_api():
     """Returns a list of valid moves for the current player."""

@@ -10,7 +10,8 @@ from libc.stdint cimport uint8_t, uint32_t, int64_t, int8_t
 import sys
 import os
 import traceback
-import cython # To use cython.bint
+import cython # To use cython.bints
+
 
 # --- Python Enums ---
 class Player: WHITE = 0; BLACK = 1
@@ -162,49 +163,20 @@ cdef class ChessEngine:
             raise RuntimeError("Chess engine handle is invalid.")
 
     @property
-    def board_state(self):
+    def board_state_address(self): # Rename property for clarity
+        """Returns the memory address of the current C board_state struct."""
         cdef CBoardState* c_state_ptr
-        cdef int r, f, i
-        cdef object py_state
-        """Returns the current board state as a Python dictionary."""
         self._check_handle()
-
-        print("[DEBUG CYTHON] Entering board_state getter", file=sys.stderr)
-
+        print("[DEBUG CYTHON] Entering board_state_address getter", file=sys.stderr)
         c_state_ptr = engine_get_board_state(self.c_engine_handle)
-        if c_state_ptr == NULL: raise RuntimeError("engine_get_board_state returned NULL.")
-
-        py_state = {}
-        py_pieces = []
-
-        print(f"[DEBUG CYTHON] About to loop through pieces using c_state_ptr", file=sys.stderr)
-
-        for r in range(8):
-            row_list = []
-            for f in range(8):
-                try:
-                    c_piece = c_state_ptr[0].pieces[r][f]
-                    row_list.append({'type': <int>c_piece.type, 'player': <int>c_piece.piece_player})
-                except Exception as e:
-                    # Keep detailed error printing just in case
-                    print(f"[FATAL DEBUG CYTHON] Exception accessing pieces via pointer: {type(e).__name__}: {e}", file=sys.stderr)
-                    # Attempt to print the pointer address
-                    try:
-                         print(f"[FATAL DEBUG CYTHON] Value of c_state_ptr: {<Py_ssize_t>c_state_ptr}", file=sys.stderr)
-                    except:
-                        print("[FATAL DEBUG CYTHON] Could not print value of c_state_ptr", file=sys.stderr)
-                    raise e
-            py_pieces.append(row_list)
-
-        py_state['pieces'] = py_pieces
-        py_state['current_player'] = <int>c_state_ptr[0].current_player
-        py_state['can_castle'] = [bool(c_state_ptr[0].can_castle[i]) for i in range(4)]
-        py_state['en_passant_valid'] = [bool(c_state_ptr[0].en_passant_valid[i]) for i in range(16)]
-        py_state['turns_since_last_capture_or_pawn'] = c_state_ptr[0].turns_since_last_capture_or_pawn
-        py_state['status'] = <int>c_state_ptr[0].status
-        py_state['can_claim_draw'] = bool(c_state_ptr[0].can_claim_draw)
-        py_state['in_check'] = [bool(c_state_ptr[0].in_check[i]) for i in range(2)]
-        return py_state
+        if c_state_ptr == NULL:
+            # Maybe return 0 or raise specific error? Returning 0 for now.
+            print("[ERROR CYTHON] engine_get_board_state returned NULL", file=sys.stderr)
+            return 0
+        # Cast the pointer address to a Python integer (Py_ssize_t is suitable)
+        address = <Py_ssize_t>c_state_ptr
+        print(f"[DEBUG CYTHON] Returning address: {address}", file=sys.stderr)
+        return address
 
     def get_valid_moves(self):
         """Returns a list of valid ChessMove objects."""
