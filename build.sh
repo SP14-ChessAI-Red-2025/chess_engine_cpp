@@ -36,6 +36,6 @@ make -C build VERBOSE=1 chess_cpp # Keep using make with target for now
 
 echo "Build complete."
 
-# Should be done but my Cython converter is broken. Porting in the pre-built library for now.
-#echo "Building Cython bindings..."
-#python src/setup_cython.py build_ext --inplace
+
+echo "Building Cython bindings..."
+python src/setup_cython.py build_ext --inplace
