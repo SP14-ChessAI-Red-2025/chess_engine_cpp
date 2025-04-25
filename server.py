@@ -84,15 +84,44 @@ def state_address_to_dict(address):
 # --- API Endpoints ---
 @app.route('/api/state', methods=['GET'])
 def get_state():
-    # (Unchanged - Reads current state)
-    if not engine: return jsonify({"error": "Engine not initialized"}), 500
+    if not engine:
+        return jsonify({"error": "Engine not initialized"}), 500
     try:
-        address = 0;
-        with engine_lock: address = engine.board_state_address
+        address = 0
+        with engine_lock:
+            # Get the address of the current C++ board state
+            address = engine.board_state_address
+
+        # Convert the C++ state to a Python dictionary
         py_state = state_address_to_dict(address)
-        if py_state is None: return jsonify({"error": "Failed to read state"}), 500
+
+        if py_state is None:
+            return jsonify({"error": "Failed to read state"}), 500
+
+        # === WORKAROUND: Manually flip player in the *dictionary* ===
+        # Apply the same workaround here as in apply_move/ai_move
+        # This corrects the player if the C++ state pointer was stale
+        # NOTE: This assumes the state read here *might* be immediately
+        #       after a move where the C++ pointer wasn't updated yet.
+        #       If this GET is always *before* a move, this might
+        #       incorrectly flip the player. Monitor logs.
+        if 'current_player' in py_state:
+            original_player = py_state['current_player']
+            # Flip 0 to 1, 1 to 0.
+            # It's safer to check the actual player value in C++ 
+            py_state['current_player'] = 1 - original_player
+            app.logger.warning(f"WORKAROUND applied in GET /api/state: Flipped current_player in dict from {original_player} to {py_state['current_player']}")
+        else:
+             app.logger.error("Cannot apply workaround in GET /api/state: 'current_player' key missing.")
+        # === END WORKAROUND ===
+
+        # Return the MODIFIED dictionary
+        app.logger.info(f"GET /api/state returning state (Python state modified). Player: {py_state.get('current_player')}, Status: {py_state.get('status')}")
         return jsonify(py_state)
-    except Exception as e: app.logger.error(f"/api/state error: {e}", exc_info=True); return jsonify({"error": "Server error"}), 500
+
+    except Exception as e:
+        app.logger.error(f"/api/state error: {e}", exc_info=True)
+        return jsonify({"error": "Server error getting state"}), 500
 
 @app.route('/api/moves', methods=['GET'])
 def get_valid_moves_api():
