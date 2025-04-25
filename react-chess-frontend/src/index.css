@@ -24,10 +24,13 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
-  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh; /* Make sure root covers viewport height */
+  width: 100%;    /* Make sure root covers viewport width */
+  display: flex; /* Use flex on root to make App fill it */
 }
 
 h1 {
