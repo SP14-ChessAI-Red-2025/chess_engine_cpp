@@ -197,13 +197,13 @@ cdef class ChessEngine:
             py_pieces.append(row_list)
 
         py_state['pieces'] = py_pieces
-        py_state['current_player'] = <int>c_state_ptr.current_player
-        py_state['can_castle'] = [bool(c_state_ptr.can_castle[i]) for i in range(4)]
-        py_state['en_passant_valid'] = [bool(c_state_ptr.en_passant_valid[i]) for i in range(16)]
-        py_state['turns_since_last_capture_or_pawn'] = c_state_ptr.turns_since_last_capture_or_pawn
-        py_state['status'] = <int>c_state_ptr.status
-        py_state['can_claim_draw'] = bool(c_state_ptr.can_claim_draw)
-        py_state['in_check'] = [bool(c_state_ptr.in_check[i]) for i in range(2)]
+        py_state['current_player'] = <int>c_state_ptr[0].current_player
+        py_state['can_castle'] = [bool(c_state_ptr[0].can_castle[i]) for i in range(4)]
+        py_state['en_passant_valid'] = [bool(c_state_ptr[0].en_passant_valid[i]) for i in range(16)]
+        py_state['turns_since_last_capture_or_pawn'] = c_state_ptr[0].turns_since_last_capture_or_pawn
+        py_state['status'] = <int>c_state_ptr[0].status
+        py_state['can_claim_draw'] = bool(c_state_ptr[0].can_claim_draw)
+        py_state['in_check'] = [bool(c_state_ptr[0].in_check[i]) for i in range(2)]
         return py_state
 
     def get_valid_moves(self):
