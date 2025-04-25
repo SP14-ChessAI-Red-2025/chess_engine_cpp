@@ -7,6 +7,7 @@ set(CHESS_CPP_SOURCES
     python_api.cpp
     chess_ai.cpp
     threefold_repetition.cpp
+    nnue_evaluator.cpp
 )
 
 # Add the shared library target using the core sources
