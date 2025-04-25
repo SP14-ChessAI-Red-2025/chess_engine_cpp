@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist -r https://SimplyEagle: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@github.com/SP14-ChessAI-Red-2025/website.git"
   },
   "dependencies": {
     "prop-types": "^15.8.1",

@@ -8,6 +8,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 # --- Path Setup ---
+cors_origins = ["https://sp14-chessai-red-2025.github.io/website/"]
 project_root = os.path.dirname(os.path.abspath(__file__))
 python_dir_path = os.path.join(project_root, 'python')
 if python_dir_path not in sys.path:
@@ -31,7 +32,7 @@ MODEL_PATH = "model/trained_nnue.onnx" # Make sure this is your model file
 
 # --- Flask App Setup ---
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": cors_origins}})
 
 # --- Global Chess Engine Instance & Lock ---
 engine_lock = threading.Lock() # Keep lock for sequential access
