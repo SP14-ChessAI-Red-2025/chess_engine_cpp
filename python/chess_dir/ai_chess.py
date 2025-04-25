@@ -242,54 +242,26 @@ class ChessEngine:
         if not self._lib: raise RuntimeError("Library not loaded.")
         if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
 
-        result_board_state = BoardState() # Buffer to receive C++ result
-
-        print(f"[PYTHON apply_move] Calling C++ engine_apply_move for move {self.move_to_str(move)}")
-        success = self._lib.engine_apply_move(
-            self._engine_handle,
-            byref(move),
-            byref(result_board_state) # Pass output buffer
-        )
-        print(f"[PYTHON apply_move] C++ engine_apply_move returned: {success}")
-
-        if not success:
-            print(f"[PYTHON WARNING] engine_apply_move returned false.")
+        new_state_pointer = self._lib.engine_apply_move(self._engine_handle, byref(move))
+        if not new_state_pointer:
+            # Log error if possible
+            print("[ai_chess.py ERROR] C++ engine_apply_move returned NULL pointer.")
+            self.board_state = None
             return None
-
-        # --- SUCCESS: Read explicitly from buffer BEFORE assigning ---
-        try:
-            player_in_buffer = result_board_state.current_player # Read directly from buffer
-            print(f"[PYTHON apply_move] Player read DIRECTLY from result buffer: {player_in_buffer}") # <<< ADD THIS LOG
-        except Exception as e_read:
-            print(f"[PYTHON apply_move] ERROR reading player directly from buffer: {e_read}")
-            player_in_buffer = -99 # Indicate error
-
-        # Now assign the whole struct
-        self.board_state = result_board_state
-        # Log the value AFTER assignment to self.board_state
-        print(f"[PYTHON apply_move] Updated self.board_state from output param. Player NOW IN self.board_state: {self.board_state.current_player if self.board_state else 'None'}")
-
-        # Check if the value changed during assignment
-        if self.board_state and self.board_state.current_player != player_in_buffer:
-             print("[PYTHON apply_move] *** MISMATCH between buffer read and self.board_state read! ***")
-
-
-        return self.board_state
-
-    def ai_move(self, difficulty: int = 3):
+        return new_state_pointer # Return the pointer itself
+    
+    def ai_move(self, difficulty: int = 3) -> POINTER(BoardState) | None:
         """ Asks the C++ AI to calculate and apply its best move using the EngineHandle API. """
         if not self._lib: raise RuntimeError("Library not loaded.")
         if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
 
-        # Pass handle, difficulty. Callback is null (0) for now.
-        success = self._lib.engine_ai_move(self._engine_handle, c_int32(difficulty), 0)
-        if not success:
-            # Log error? C++ side should print errors.
-            print(f"[PYTHON WARNING] engine_ai_move returned false.")
-            # Consider if the local board state should be marked invalid or re-fetched
-
-        # --- IMPORTANT: Update local board state copy after C++ modifies it ---
-        self._update_local_board_state()
+        new_state_pointer = self._lib.engine_ai_move(self._engine_handle, c_int32(difficulty), 0)
+        if not new_state_pointer:
+            # Log error if possible
+            print("[ai_chess.py ERROR] C++ engine_ai_move returned NULL pointer.")
+            self.board_state = None
+            return None
+        return new_state_pointer # Return the pointer itself
 
 
     def evaluate_board(self) -> float:
