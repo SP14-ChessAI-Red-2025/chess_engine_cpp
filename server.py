@@ -235,8 +235,8 @@ def trigger_ai_move(): # Conditional Workaround Applied
     difficulty = 1
     if request.is_json and isinstance(request.json, dict):
         try: 
-            difficulty = int(request.json.get('difficulty', 3))
-        except (ValueError, TypeError): difficulty = 3
+            difficulty = int(request.json.get('difficulty', 1))
+        except (ValueError, TypeError): difficulty = 1
 
     previous_player = None # AI player who is about to move
     try:

@@ -200,7 +200,7 @@ namespace chess::ai {
 
         if (board.status != game_status::normal) return;
 
-        std::size_t search_depth = (difficulty <= 1) ? 4 : (difficulty <= 2) ? 5 : (difficulty <= 3) ? 6 : 6;
+        std::size_t search_depth = (difficulty <= 1) ? 2 : (difficulty <= 2) ? 4 : (difficulty <= 3) ? 6 : 6;
         std::cout << "[INFO] AI (" << (board.current_player == player::white ? "White" : "Black") << ") searching at depth: " << search_depth << " (Difficulty: " << difficulty << ")" << std::endl;
         if (search_depth < 1) return;
 
