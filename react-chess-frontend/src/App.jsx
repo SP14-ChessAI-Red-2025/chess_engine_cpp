@@ -25,9 +25,8 @@ function App() {
 
   // --- Helper to Get Status String ---
   const getGameStatusMessage = (state) => {
-    // (Keep existing implementation)
     if (!state) return "Loading State...";
-    if (isLoading && statusMessage.startsWith("AI is") || statusMessage.startsWith("Applying")) return statusMessage; // Keep specific loading messages
+    if (isLoading && (statusMessage.startsWith("AI is") || statusMessage.startsWith("Applying"))) return statusMessage;
 
     switch (state.status) {
       case GameStatus.NORMAL:
@@ -37,36 +36,46 @@ function App() {
       case GameStatus.CHECKMATE:
         const winner = state.current_player === Player.BLACK ? "White" : "Black";
         return `Checkmate! ${winner} Wins.`;
-      case GameStatus.DRAW: return "Draw (Stalemate/50-Move/Material)";
-      case GameStatus.DRAW_BY_REPETITION: return "Draw (Repetition)";
-      case GameStatus.RESIGNED: return "Resigned";
-      default: return `Unknown Status (${state.status})`;
+      case GameStatus.DRAW:
+        return "Draw (Stalemate/50-Move/Material)";
+      case GameStatus.DRAW_BY_REPETITION:
+        return "Draw (Repetition)";
+      case GameStatus.RESIGNED:
+        return "Resigned";
+      default:
+        return `Unknown Status (${state.status})`;
     }
   };
 
   // --- Fetch ONLY Valid Moves --- (Helper Function)
   const fetchValidMoves = useCallback(async (currentState) => {
-      if (!currentState || currentState.status !== GameStatus.NORMAL) {
-          console.log("Skipping move fetch: game over or no state.");
-          setValidMoves([]);
-          return;
-      }
-      console.log("Fetching valid moves for new state...");
-      try {
-          const movesResponse = await fetch(`${API_URL}/moves`);
-          if (!movesResponse.ok) {
-              console.error(`Failed to fetch moves: ${movesResponse.status}`);
-              setValidMoves([]);
-          } else {
-              const movesData = await movesResponse.json();
-              setValidMoves(Array.isArray(movesData) ? movesData : []);
-              console.log(`Fetched ${movesData?.length ?? 0} moves.`);
-          }
-      } catch (error) {
-           console.error("Error fetching valid moves:", error);
-           setValidMoves([]);
-      }
-  }, []); // No dependencies needed
+  if (!currentState || currentState.status !== GameStatus.NORMAL) {
+    console.log("Skipping move fetch: game over or no state.");
+    setValidMoves([]);
+    return;
+  }
+  console.log("Fetching valid moves for new state...");
+  try {
+    const movesResponse = await fetch(`${API_URL}/moves`);
+    if (!movesResponse.ok) {
+      console.error(`Failed to fetch moves: ${movesResponse.status}`);
+      setValidMoves([]);
+    } else {
+      const movesData = await movesResponse.json();
+
+      // Filter out special-case moves like claim_draw or resign
+      const filteredMoves = movesData.filter(
+        (move) => move.type !== 5 && move.type !== 6 // Assuming 5 = resign, 6 = claim_draw
+      );
+
+      setValidMoves(filteredMoves);
+      console.log(`Fetched ${filteredMoves.length} valid moves.`);
+    }
+  } catch (error) {
+    console.error("Error fetching valid moves:", error);
+    setValidMoves([]);
+  }
+}, []); // No dependencies needed
 
 
   // --- Fetch Initial Game State (Only fetches state, moves fetched separately) ---
@@ -143,47 +152,62 @@ function App() {
 
   // --- Trigger AI Move ---
   const triggerAiMove = useCallback(async () => {
-    // --- Condition Check (Good) ---
-    if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.SELECT) {
-        console.log("triggerAiMove skipped: conditions not met."); return; }
-    const isAIsTurn =
-      (gameMode === GameMode.AI_VS_AI) ||
-      (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) ||
-      (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE);
-    if (!isAIsTurn) { console.log("triggerAiMove skipped: not AI's turn."); return; }
-    // --- End Condition Check ---
+  if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.SELECT) {
+    console.log("triggerAiMove skipped: conditions not met.");
+    return;
+  }
 
-    console.log("Triggering AI move...");
-    setIsLoading(true);
-    setStatusMessage("AI is thinking...");
-    setValidMoves([]); // Clear old moves
-    setSelectedSquare(null); // Clear selection
+  const isAIsTurn =
+    (gameMode === GameMode.AI_VS_AI) ||
+    (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) ||
+    (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE);
 
-    try {
-      const response = await fetch(`${API_URL}/ai_move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }); // Pass difficulty if needed
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `AI move failed: ${response.status}`);
-      }
+  if (!isAIsTurn) {
+    console.log("triggerAiMove skipped: not AI's turn.");
+    return;
+  }
 
-      const newState = await response.json();
-      console.log("Received new state directly from POST /api/ai_move:", newState);
-      newState.current_player = (newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE);
-      setBoardState(newState); // Update state with the direct response
-      setStatusMessage(getGameStatusMessage(newState)); // Update status message
+  console.log("Triggering AI move...");
+  setIsLoading(true);
+  setStatusMessage("AI is thinking...");
+  setValidMoves([]);
+  setSelectedSquare(null);
 
-      // Fetch valid moves for the *next* player based on the newState
-      await fetchValidMoves(newState);
+  try {
+    const response = await fetch(`${API_URL}/ai_move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
 
-    } catch (error) {
-      console.error("Error during AI move:", error);
-      setStatusMessage(`Error during AI turn: ${error.message}`);
-      // Optionally try fetching state again on error to recover?
-      // fetchInitialGameState("triggerAiMove-error");
-    } finally {
-      setIsLoading(false); // Ensure loading is set to false
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `AI move failed: ${response.status}`);
     }
-  }, [isLoading, boardState, gameMode, fetchValidMoves]); // Added fetchValidMoves
+
+    const newState = await response.json();
+    console.log("Received new state directly from POST /api/ai_move:", newState);
+
+    // Check if the game is over
+    if (newState.status === GameStatus.CHECKMATE || newState.status === GameStatus.DRAW) {
+      console.log("Game over detected.");
+      setBoardState(newState);
+      setStatusMessage(getGameStatusMessage(newState));
+      return;
+    }
+
+    // Update current player and fetch valid moves
+    newState.current_player = newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE;
+    setBoardState(newState);
+    setStatusMessage(getGameStatusMessage(newState));
+    await fetchValidMoves(newState);
+  } catch (error) {
+    console.error("Error during AI move:", error);
+    setStatusMessage(`Error during AI turn: ${error.message}`);
+  } finally {
+    setIsLoading(false);
+  }
+}, [isLoading, boardState, gameMode, fetchValidMoves]);
 
 
   // --- Effect to Automatically Trigger AI Move (Keep as is) ---
