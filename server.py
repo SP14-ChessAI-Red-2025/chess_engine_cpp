@@ -203,6 +203,15 @@ def apply_move_api(): # Conditional Workaround Applied
                  return jsonify({"error": "Failed to convert new board state"}), 500
             app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
+            # === CONDITIONAL WORKAROUND (Logic remains the same) ===
+            if 'current_player' in new_state_dict:
+                player_read_from_state = new_state_dict['current_player']
+                if previous_player is not None and player_read_from_state == previous_player:
+                    expected_next_player = 1 - previous_player
+                    app.logger.warning(f"CONDITIONAL WORKAROUND: Player read ({player_read_from_state}) matches previous player ({previous_player}). Flipping to {expected_next_player}.")
+                    new_state_dict['current_player'] = expected_next_player
+                # ... (rest of conditional logic and logging) ...
+            # === END WORKAROUND ===
 
         # 5. Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
@@ -223,10 +232,11 @@ def trigger_ai_move(): # Conditional Workaround Applied
     """Triggers AI move, gets new state pointer from engine, returns corrected state dict."""
     if not engine: return jsonify({"error": "Chess engine not initialized"}), 500
 
-    difficulty = 5
+    difficulty = 3
     if request.is_json and isinstance(request.json, dict):
-        try: difficulty = int(request.json.get('difficulty', 5))
-        except (ValueError, TypeError): difficulty = 5
+        try: 
+            difficulty = int(request.json.get('difficulty', 3))
+        except (ValueError, TypeError): difficulty = 3
 
     previous_player = None # AI player who is about to move
     try:
@@ -274,6 +284,21 @@ def trigger_ai_move(): # Conditional Workaround Applied
                  app.logger.error(f"state_address_to_dict failed for address {new_state_address}")
                  return jsonify({"error": "Failed to convert board state after AI move"}), 500
              app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
+
+             # === CONDITIONAL WORKAROUND ===
+             if 'current_player' in new_state_dict:
+                 player_read_from_state = new_state_dict['current_player']
+
+                 # Only flip if the player read matches the player *who just moved* (the AI)
+                 if player_read_from_state == previous_player:
+                     expected_next_player = 1 - previous_player
+                     app.logger.warning(f"CONDITIONAL WORKAROUND (AI): Player read ({player_read_from_state}) matches previous player ({previous_player}). Flipping to {expected_next_player}.")
+                     new_state_dict['current_player'] = expected_next_player
+                 else:
+                      app.logger.info(f"Conditional workaround (AI) NOT needed: Player read ({player_read_from_state}) is already different from previous player ({previous_player}).")
+             else:
+                  app.logger.error("Cannot apply conditional workaround (AI): 'current_player' key missing.")
+             # === END WORKAROUND ===
 
         # Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')

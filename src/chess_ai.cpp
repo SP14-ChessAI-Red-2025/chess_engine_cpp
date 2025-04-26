@@ -200,7 +200,7 @@ namespace chess::ai {
 
         if (board.status != game_status::normal) return;
 
-        std::size_t search_depth = (difficulty <= 1) ? 2 : (difficulty <= 3) ? 3 : (difficulty <= 5) ? 4 : (difficulty <= 7) ? 5 : 6;
+        std::size_t search_depth = (difficulty <= 1) ? 4 : (difficulty <= 2) ? 5 : (difficulty <= 3) ? 6 : 6;
         std::cout << "[INFO] AI (" << (board.current_player == player::white ? "White" : "Black") << ") searching at depth: " << search_depth << " (Difficulty: " << difficulty << ")" << std::endl;
         if (search_depth < 1) return;
 
@@ -269,7 +269,14 @@ namespace chess::ai {
         std::cout << "[INFO] Search finished in " << duration.count() << " ms." << std::endl;
 
         if (best_move_found) {
+             std::cout << "[INFO] Best move found: ("
+                       << static_cast<int>(best_move.start_position.rank) << "," << static_cast<int>(best_move.start_position.file) << ")->"
+                       << "(" << static_cast<int>(best_move.target_position.rank) << "," << static_cast<int>(best_move.target_position.file) << ")"
+                       << " with score: " << best_score << std::endl;
+            std::cout << "[INFO] Applying best move." << std::endl;
+            std::cout << "Current player before move apply: " << static_cast<int>(board.current_player) << std::endl;
             chess::apply_move(board, best_move, history); // Apply best found move
+            std::cout << "Current player after move apply: " << static_cast<int>(board.current_player) << std::endl;
         } else {
              std::cerr << "[WARNING] AI could not find a best move (search failed or cancelled early?). Playing fallback." << std::endl;
              if (!scored_root_moves.empty()) {
