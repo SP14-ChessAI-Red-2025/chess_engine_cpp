@@ -232,11 +232,10 @@ def trigger_ai_move(): # Conditional Workaround Applied
     """Triggers AI move, gets new state pointer from engine, returns corrected state dict."""
     if not engine: return jsonify({"error": "Chess engine not initialized"}), 500
 
-    difficulty = 1
+    difficulty = 5
     if request.is_json and isinstance(request.json, dict):
-        try: 
-            difficulty = int(request.json.get('difficulty', 1))
-        except (ValueError, TypeError): difficulty = 1
+        try: difficulty = int(request.json.get('difficulty', 5))
+        except (ValueError, TypeError): difficulty = 5
 
     previous_player = None # AI player who is about to move
     try:

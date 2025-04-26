@@ -187,37 +187,24 @@ function App() {
   }, [isLoading, boardState, gameMode, fetchValidMoves]); // Added fetchValidMoves
 
 
-  // --- Effect to Automatically Trigger AI Move ---
+  // --- Effect to Automatically Trigger AI Move (Keep as is) ---
   useEffect(() => {
-    // Guard conditions - should prevent running if loading or game over, or if no player color assigned
-    if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) {
-      return;
-    }
+    // Guard conditions - should prevent running if loading or game over
+    if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) return;
 
-    // Determine if it should be the AI's turn to move
-    let shouldAiMove = false;
-    if (gameMode === GameMode.AI_VS_AI) {
-        // In AI vs AI mode, AI always moves if the game is ongoing
-        shouldAiMove = true;
-    } else if (playerColor !== null) {
-        // In Player vs AI modes, AI moves if the current player in the state
-        // is NOT the human player's chosen color.
-        shouldAiMove = (boardState.current_player !== playerColor);
-    } else {
-        // Should not happen if gameMode is not SELECT, but good to handle
-        console.error("AI Effect: Game mode requires AI but playerColor is null!");
-    }
-
+    // Determine if AI should move based on mode and current player in the state
+    const isAIsTurn =
+      (gameMode === GameMode.AI_VS_AI) ||
+      (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) || // AI is Black (1)
+      (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE); // AI is White (0)
 
     // If it's determined to be the AI's turn...
-    if (shouldAiMove) {
-      // console.log(`AI Effect: Triggering AI move for player ${boardState.current_player}`); // Optional debug
-      const timeoutId = setTimeout(triggerAiMove, 500); // triggerAiMove sets isLoading=true
+    if (isAIsTurn) {
+      // Trigger AI after a short delay
+      const timeoutId = setTimeout(triggerAiMove, 500); // 500ms delay
       return () => clearTimeout(timeoutId); // Cleanup timeout on unmount/re-run
-    } else {
-        // console.log(`AI Effect: Not AI's turn (Player: ${boardState.current_player}, Human: ${playerColor})`); // Optional debug
-        // No action needed if it's the human player's turn
     }
+  // Dependencies: This effect re-runs if any of these change
   }, [boardState, gameMode, isLoading, triggerAiMove]);
 
 
