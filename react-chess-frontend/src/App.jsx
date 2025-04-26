@@ -198,6 +198,11 @@ function App() {
       (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) || // AI is Black (1)
       (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE); // AI is White (0)
 
+    console.log("DEBUG AI Effect: GameMode = ", gameMode); // Debug log
+    console.log("DEBUG AI Effect: Player Color =", playerColor); // Debug log
+    console.log("DEBUG AI Effect: Current Player =", boardState.current_player); // Debug log
+    console.log("DEBUG AI Effect: isAIsTurn =", isAIsTurn); // Debug log
+
     // If it's determined to be the AI's turn...
     if (isAIsTurn) {
       // Trigger AI after a short delay
@@ -206,6 +211,39 @@ function App() {
     }
   // Dependencies: This effect re-runs if any of these change
   }, [boardState, gameMode, isLoading, triggerAiMove]);
+
+  useEffect(() => {
+    // Guard conditions - should prevent running if loading or game over, or if no player color assigned
+    if (!boardState || gameMode === GameMode.SELECT || boardState.status !== GameStatus.NORMAL || isLoading) {
+      return;
+    }
+
+    // Determine if it should be the AI's turn to move
+    let shouldAiMove = false;
+    if (gameMode === GameMode.AI_VS_AI) {
+        // In AI vs AI mode, AI always moves if the game is ongoing
+        shouldAiMove = true;
+    } else if (playerColor !== null) {
+        // In Player vs AI modes, AI moves if the current player in the state
+        // is NOT the human player's chosen color.
+        shouldAiMove = (boardState.current_player !== playerColor);
+    } else {
+        // Should not happen if gameMode is not SELECT, but good to handle
+        console.error("AI Effect: Game mode requires AI but playerColor is null!");
+    }
+
+
+    // If it's determined to be the AI's turn...
+    if (shouldAiMove) {
+      // console.log(`AI Effect: Triggering AI move for player ${boardState.current_player}`); // Optional debug
+      const timeoutId = setTimeout(triggerAiMove, 500); // triggerAiMove sets isLoading=true
+      return () => clearTimeout(timeoutId); // Cleanup timeout on unmount/re-run
+    } else {
+        // console.log(`AI Effect: Not AI's turn (Player: ${boardState.current_player}, Human: ${playerColor})`); // Optional debug
+        // No action needed if it's the human player's turn
+    }
+  // Dependencies: Check if isLoading still needed if handled solely within triggerAiMove/handleSquareClick
+  }, [boardState, gameMode, playerColor, isLoading, triggerAiMove]);
 
 
   // --- Handle Square Click Logic ---
@@ -286,12 +324,10 @@ function App() {
           setSelectedSquare(null);
         }
       }
-    } else { // No piece was selected previously
+    } else {
       if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
-        // Clicked on one of the player's pieces, select it
         setSelectedSquare({ rank, file });
       }
-      // Do nothing if clicked empty square or opponent piece when nothing selected
     }
   }, [isLoading, boardState, gameMode, playerColor, selectedSquare, validMoves, fetchValidMoves, fetchInitialGameState]); // Added dependencies
 
@@ -315,12 +351,8 @@ function App() {
         // Render Selector when gameMode is SELECT
         <GameModeSelector onSelectMode={handleGameModeSelect} />
       ) : (
-        // Otherwise, render the Game View elements
-        // Use a React Fragment <>...</> to group multiple elements
         <>
           <h1>React Chess</h1>
-
-          {/* Timer Display REMOVED - Assuming this is intentional */}
 
           {/* Game Status */}
           <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
