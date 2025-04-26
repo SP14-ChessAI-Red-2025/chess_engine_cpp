@@ -22,6 +22,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [gameMode, setGameMode] = useState(GameMode.SELECT);
   const [playerColor, setPlayerColor] = useState(null);
+  const [boardStateHistory, setBoardStateHistory] = useState(new Map());
+  const [fiftyMoveCounter, setFiftyMoveCounter] = useState(0);
 
   // --- Helper to Get Status String ---
   const getGameStatusMessage = (state) => {
@@ -39,9 +41,9 @@ function App() {
       case GameStatus.DRAW:
         return "Draw (Stalemate/50-Move/Material)";
       case GameStatus.DRAW_BY_REPETITION:
-        return "Draw (Repetition)";
+        return "Draw by Threefold Repetition";
       case GameStatus.RESIGNED:
-        return "Resigned";
+        return "Game Over: Player Resigned";
       default:
         return `Unknown Status (${state.status})`;
     }
@@ -49,38 +51,41 @@ function App() {
 
   // --- Fetch ONLY Valid Moves --- (Helper Function)
   const fetchValidMoves = useCallback(async (currentState) => {
-  if (!currentState || currentState.status !== GameStatus.NORMAL) {
-    console.log("Skipping move fetch: game over or no state.");
-    setValidMoves([]);
-    return;
-  }
-  console.log("Fetching valid moves for new state...");
-  try {
-    const movesResponse = await fetch(`${API_URL}/moves`);
-    if (!movesResponse.ok) {
-      console.error(`Failed to fetch moves: ${movesResponse.status}`);
+    if (!currentState || currentState.status !== GameStatus.NORMAL) {
+      console.log("Skipping move fetch: game over or no state.");
       setValidMoves([]);
-    } else {
-      const movesData = await movesResponse.json();
-
-      // Filter out special-case moves like claim_draw or resign
-      const filteredMoves = movesData.filter(
-        (move) => move.type !== 5 && move.type !== 6 // Assuming 5 = resign, 6 = claim_draw
-      );
-
-      setValidMoves(filteredMoves);
-      console.log(`Fetched ${filteredMoves.length} valid moves.`);
+      return;
     }
-  } catch (error) {
-    console.error("Error fetching valid moves:", error);
-    setValidMoves([]);
-  }
-}, []); // No dependencies needed
+    console.log("Fetching valid moves for new state...");
+    try {
+      const movesResponse = await fetch(`${API_URL}/moves`);
+      if (!movesResponse.ok) {
+        console.error(`Failed to fetch moves: ${movesResponse.status}`);
+        setValidMoves([]);
+      } else {
+        const movesData = await movesResponse.json();
+
+        // Filter out special-case moves like claim_draw or resign
+        const filteredMoves = movesData.filter(
+          (move) => move.type !== 5 && move.type !== 6 // Assuming 5 = resign, 6 = claim_draw
+        );
+
+        setValidMoves(filteredMoves);
+        console.log(`Fetched ${filteredMoves.length} valid moves.`);
+      }
+    } catch (error) {
+      console.error("Error fetching valid moves:", error);
+      setValidMoves([]);
+    }
+  }, []); // No dependencies needed
 
 
   // --- Fetch Initial Game State (Only fetches state, moves fetched separately) ---
   const fetchInitialGameState = useCallback(async (caller = "unknown") => {
-    if (isLoading) { console.log(`fetchInitialGameState skipped by ${caller}: isLoading=true`); return null; }
+    if (isLoading) {
+      console.log(`fetchInitialGameState skipped by ${caller}: isLoading=true`);
+      return null;
+    }
     console.log(`Fetching initial game state (called by ${caller})...`);
     setIsLoading(true);
     setStatusMessage("Fetching state...");
@@ -93,12 +98,11 @@ function App() {
       if (!newState || typeof newState !== 'object') throw new Error("Received invalid state from server");
       console.log("Fetched Initial State:", newState);
 
-      setBoardState(newState); // Set initial state
+      updateBoardStateWithHistory(newState); // Set initial state
       setStatusMessage(getGameStatusMessage(newState)); // Update status message
 
       // Fetch moves separately after setting initial state
       await fetchValidMoves(newState);
-
     } catch (error) {
       console.error("Error fetching initial game state:", error);
       setStatusMessage(`Error fetching state: ${error.message}`);
@@ -108,30 +112,74 @@ function App() {
       setIsLoading(false);
     }
     return newState;
-  }, [isLoading, fetchValidMoves]); // Add fetchValidMoves dependency
+  }, [isLoading, fetchValidMoves]);
 
+  const updateBoardStateWithHistory = (newState) => {
+    setBoardState((prevState) => {
+      if (!newState || !newState.pieces) return prevState;
+
+      // Serialize the board state for comparison (e.g., FEN-like string)
+      const serializedState = JSON.stringify(newState.pieces);
+
+      // Update the history map
+      setBoardStateHistory((prevHistory) => {
+        const newHistory = new Map(prevHistory);
+        const count = newHistory.get(serializedState) || 0;
+        newHistory.set(serializedState, count + 1);
+
+        // Check for threefold repetition
+        if (newHistory.get(serializedState) === 3) {
+          console.log("Threefold repetition detected. Declaring a draw.");
+          newState.status = GameStatus.DRAW_BY_REPETITION;
+          setStatusMessage("Draw by Threefold Repetition");
+        }
+
+        return newHistory;
+      });
+
+      // Update the fifty-move counter
+      if (newState.last_move && (newState.last_move.piece === PieceType.PAWN || newState.last_move.is_capture)) {
+        setFiftyMoveCounter(0); // Reset counter on pawn move or capture
+      } else {
+        setFiftyMoveCounter((prevCounter) => prevCounter + 1); // Increment counter otherwise
+      }
+
+      // Check for fifty-move rule
+      if (fiftyMoveCounter + 1 >= 50) {
+        console.log("Fifty-move rule triggered. Declaring a draw.");
+        newState.status = GameStatus.DRAW;
+        setStatusMessage("Draw by Fifty-Move Rule");
+      }
+
+      return newState;
+    });
+  };
 
   // --- Reset Game ---
   const returnToModeSelect = useCallback(async () => {
-       // ... (Keep existing implementation, maybe call fetchInitialGameState at end if needed, or just reset) ...
-       setIsLoading(true);
-       setStatusMessage("Resetting game...");
-       try {
-           console.log("Calling /api/reset...");
-           const response = await fetch(`${API_URL}/reset`, { method: 'POST' });
-           if (!response.ok) { /* ... error handling ... */ }
-           console.log("Reset successful on backend.");
-           // Reset frontend state fully
-           setGameMode(GameMode.SELECT);
-           setBoardState(null);
-           setValidMoves([]);
-           setSelectedSquare(null);
-           setPlayerColor(null);
-           setStatusMessage("Select Game Mode");
-       } catch (error) { /* ... error handling ... */ }
-       finally { setIsLoading(false); }
-  }, []);
+    setIsLoading(true);
+    setStatusMessage("Resetting game...");
+    try {
+      console.log("Calling /api/reset...");
+      const response = await fetch(`${API_URL}/reset`, { method: 'POST' });
+      if (!response.ok) throw new Error("Failed to reset game on backend.");
+      console.log("Reset successful on backend.");
 
+      // Reset frontend state fully
+      setGameMode(GameMode.SELECT);
+      setBoardState(null);
+      setValidMoves([]);
+      setSelectedSquare(null);
+      setPlayerColor(null);
+      setFiftyMoveCounter(0); // Reset fifty-move counter
+      setStatusMessage("Select Game Mode");
+    } catch (error) {
+      console.error("Error resetting game:", error);
+      setStatusMessage("Error resetting game.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   // --- Start Game ---
   const handleGameModeSelect = useCallback((mode) => {
@@ -149,13 +197,26 @@ function App() {
     fetchInitialGameState("handleGameModeSelect");
   }, [fetchInitialGameState]);
 
+  const handleResign = useCallback(() => {
+    if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL) {
+      console.log("Resign action skipped: conditions not met.");
+      return;
+    }
+  
+    console.log("Player resigned.");
+    setBoardState((prevState) => ({
+      ...prevState,
+      status: GameStatus.RESIGNED,
+    }));
+    setStatusMessage("Game Over: Player Resigned");
+  }, [isLoading, boardState]);
 
   // --- Trigger AI Move ---
   const triggerAiMove = useCallback(async () => {
-  if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.SELECT) {
-    console.log("triggerAiMove skipped: conditions not met.");
-    return;
-  }
+    if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.SELECT) {
+      console.log("triggerAiMove skipped: conditions not met.");
+      return;
+    }
 
   const isAIsTurn =
     (gameMode === GameMode.AI_VS_AI) ||
@@ -191,14 +252,14 @@ function App() {
     // Check if the game is over
     if (newState.status === GameStatus.CHECKMATE || newState.status === GameStatus.DRAW) {
       console.log("Game over detected.");
-      setBoardState(newState);
+      updateBoardStateWithHistory(newState);
       setStatusMessage(getGameStatusMessage(newState));
       return;
     }
 
     // Update current player and fetch valid moves
     newState.current_player = newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE;
-    setBoardState(newState);
+    updateBoardStateWithHistory(newState);
     setStatusMessage(getGameStatusMessage(newState));
     await fetchValidMoves(newState);
   } catch (error) {
@@ -238,88 +299,71 @@ function App() {
 
   // --- Handle Square Click Logic ---
   const handleSquareClick = useCallback(async (rank, file) => {
-    // --- Condition Checks (Good) ---
-    if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.AI_VS_AI) return;
-    const isPlayerTurn = playerColor !== null && boardState.current_player === playerColor;
-    if (!isPlayerTurn) return;
-    // --- End Condition Checks ---
+  if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.AI_VS_AI) return;
+  const isPlayerTurn = playerColor !== null && boardState.current_player === playerColor;
+  if (!isPlayerTurn) return;
 
-    const clickedPiece = boardState.pieces[rank][file];
+  const clickedPiece = boardState.pieces[rank][file];
 
-    if (selectedSquare) { // A piece is already selected
-      const sourceSq = selectedSquare;
-      const targetSq = { rank, file };
+  if (selectedSquare) {
+    const sourceSq = selectedSquare;
+    const targetSq = { rank, file };
 
-      // Find the move object based on current valid moves
-      const move = validMoves.find(m =>
-        m.start.rank === sourceSq.rank && m.start.file === sourceSq.file &&
-        m.target.rank === targetSq.rank && m.target.file === targetSq.file
-      );
+    const move = validMoves.find(m =>
+      m.start.rank === sourceSq.rank && m.start.file === sourceSq.file &&
+      m.target.rank === targetSq.rank && m.target.file === targetSq.file
+    );
 
-      if (move) { // Clicked on a valid target square for the selected piece
-        setIsLoading(true);
-        setStatusMessage("Applying move...");
-        setSelectedSquare(null); // Deselect piece
-        setValidMoves([]); // Clear old moves
+    if (move) {
+      setIsLoading(true);
+      setStatusMessage("Applying move...");
+      setSelectedSquare(null);
+      setValidMoves([]);
 
-        try {
-          // Prepare payload, include current_player for conditional check on backend
-          const movePayload = {
-              start: move.start,
-              target: move.target,
-              promotion: PieceType.NONE, // Default, override if needed
-              current_player: boardState.current_player // Send player making the move
-          };
-          // Handle promotion (assuming default to Queen for now)
-          // TODO: Implement promotion piece selection UI if needed
-          if (move.type === 4 /* Promotion */ && boardState.pieces[sourceSq.rank][sourceSq.file]?.type === PieceType.PAWN) {
-              if (targetSq.rank === 7 || targetSq.rank === 0) {
-                  movePayload.promotion = PieceType.QUEEN; // Default to Queen
-                  console.log("Applying default Queen promotion for move:", move);
-              }
-          }
+      try {
+        const movePayload = {
+          start: move.start,
+          target: move.target,
+          promotion: PieceType.NONE,
+          current_player: boardState.current_player,
+        };
 
-          // Call the backend API
-          const response = await fetch(`${API_URL}/apply_move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(movePayload) });
+        const response = await fetch(`${API_URL}/apply_move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(movePayload),
+        });
 
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Move application failed: ${response.status}`);
-          }
-
-          // --- FIX: Use the response directly ---
-          const newState = await response.json();
-          console.log("Received new state directly from POST /api/apply_move:", newState);
-          setBoardState(newState); // Update state with the direct response
-          setStatusMessage(getGameStatusMessage(newState)); // Update status message
-
-          // Fetch valid moves for the *next* player based on the newState
-          await fetchValidMoves(newState);
-          // --- END FIX ---
-
-        } catch (error) {
-          console.error("Error applying move:", error);
-          setStatusMessage(`Error applying move: ${error.message}`);
-          // Attempt to recover by fetching current state/moves
-          fetchInitialGameState("handleSquareClick-error"); // Fetch both state and moves on error
-        } finally {
-          setIsLoading(false); // Ensure loading is set to false
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Move application failed: ${response.status}`);
         }
-      } else { // Clicked on a square that is NOT a valid target
-        if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
-          // Clicked on another of the player's pieces, select it instead
-          setSelectedSquare({ rank, file });
-        } else {
-          // Clicked on empty square or opponent piece, deselect
-          setSelectedSquare(null);
-        }
+
+        const newState = await response.json();
+        console.log("Received new state directly from POST /api/apply_move:", newState);
+        updateBoardStateWithHistory(newState);
+        setStatusMessage(getGameStatusMessage(newState));
+        await fetchValidMoves(newState);
+      } catch (error) {
+        console.error("Error applying move:", error);
+        setStatusMessage(`Error applying move: ${error.message}`);
+        fetchInitialGameState("handleSquareClick-error");
+      } finally {
+        setIsLoading(false);
       }
     } else {
       if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
         setSelectedSquare({ rank, file });
+      } else {
+        setSelectedSquare(null);
       }
     }
-  }, [isLoading, boardState, gameMode, playerColor, selectedSquare, validMoves, fetchValidMoves, fetchInitialGameState]); // Added dependencies
+  } else {
+    if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
+      setSelectedSquare({ rank, file });
+    }
+  }
+}, [isLoading, boardState, gameMode, playerColor, selectedSquare, validMoves, fetchValidMoves, fetchInitialGameState]);
 
 
   // --- Calculate Highlight Squares ---
@@ -335,39 +379,45 @@ function App() {
   const highlightSquares = getHighlightSquares(); // Assumes getHighlightSquares is defined above
 
   return (
-    // This div is now the single top-level element, always rendered
-    <div className="App">
-      {gameMode === GameMode.SELECT ? (
-        // Render Selector when gameMode is SELECT
-        <GameModeSelector onSelectMode={handleGameModeSelect} />
-      ) : (
-        <>
-          <h1>Chess AI</h1>
+  <div className="App">
+    {gameMode === GameMode.SELECT ? (
+      <GameModeSelector onSelectMode={handleGameModeSelect} />
+    ) : (
+      <>
+        <h1>Chess AI</h1>
 
-          {/* Game Status */}
-          <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
+        {/* Game Status */}
+        <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
 
-          {/* Board or Loading Message */}
-          {boardState && Array.isArray(boardState.pieces) ? (
-            <Board
-              boardPieces={boardState.pieces}
-              onSquareClick={handleSquareClick}
-              selectedSquare={selectedSquare}
-              // Pass highlightSquares calculated above
-              highlightSquares={highlightSquares}
-            />
-          ) : (
-            <div className="loading">{isLoading ? 'Loading...' : 'Waiting for Server...'}</div>
-          )}
+        {/* Board or Loading Message */}
+        {boardState && Array.isArray(boardState.pieces) ? (
+          <Board
+            boardPieces={boardState.pieces}
+            onSquareClick={handleSquareClick}
+            selectedSquare={selectedSquare}
+            highlightSquares={highlightSquares}
+          />
+        ) : (
+          <div className="loading">{isLoading ? 'Loading...' : 'Waiting for Server...'}</div>
+        )}
 
-          {/* Change Mode Button */}
-          <button onClick={returnToModeSelect} disabled={isLoading} style={{ marginTop: '15px' }}>
-            Change Mode / Reset
-          </button>
-        </>
-      )}
-    </div>
-  );
+        {/* Resign Button */}
+        <button
+          onClick={handleResign}
+          disabled={isLoading || !boardState || boardState.status !== GameStatus.NORMAL}
+          style={{ marginTop: '15px', marginRight: '10px' }}
+        >
+          Resign
+        </button>
+
+        {/* Change Mode Button */}
+        <button onClick={returnToModeSelect} disabled={isLoading} style={{ marginTop: '15px' }}>
+          Change Mode / Reset
+        </button>
+      </>
+    )}
+  </div>
+);
 }
 
 export default App;
