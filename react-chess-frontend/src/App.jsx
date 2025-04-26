@@ -143,7 +143,7 @@ function App() {
 
   // --- Trigger AI Move ---
   const triggerAiMove = useCallback(async () => {
-    // --- Condition Check ---
+    // --- Condition Check (Good) ---
     if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.SELECT) {
         console.log("triggerAiMove skipped: conditions not met."); return; }
     const isAIsTurn =
@@ -211,17 +211,19 @@ function App() {
 
     // If it's determined to be the AI's turn...
     if (shouldAiMove) {
-      // console.log(`AI Effect: Triggering AI move for player ${boardState.current_player}`);
+      // console.log(`AI Effect: Triggering AI move for player ${boardState.current_player}`); // Optional debug
       const timeoutId = setTimeout(triggerAiMove, 500); // triggerAiMove sets isLoading=true
       return () => clearTimeout(timeoutId); // Cleanup timeout on unmount/re-run
+    } else {
+        // console.log(`AI Effect: Not AI's turn (Player: ${boardState.current_player}, Human: ${playerColor})`); // Optional debug
+        // No action needed if it's the human player's turn
     }
-  // Dependencies: Check if isLoading still needed if handled solely within triggerAiMove/handleSquareClick
-  }, [boardState, gameMode, playerColor, isLoading, triggerAiMove]); // Added playerColor dependency
+  }, [boardState, gameMode, isLoading, triggerAiMove]);
 
 
   // --- Handle Square Click Logic ---
   const handleSquareClick = useCallback(async (rank, file) => {
-    // --- Condition Checks ---
+    // --- Condition Checks (Good) ---
     if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.AI_VS_AI) return;
     const isPlayerTurn = playerColor !== null && boardState.current_player === playerColor;
     if (!isPlayerTurn) return;
