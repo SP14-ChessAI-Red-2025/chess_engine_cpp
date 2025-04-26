@@ -199,7 +199,7 @@ namespace chess {
         std::vector<chess_move> pseudo_legal_moves;
         player current_p = board.current_player;
         player opponent_p = (current_p == player::white) ? player::black : player::white;
-        std::cerr << "DEBUG C++ Rules: get_valid_moves called for player " << static_cast<int>(current_p) << std::endl;
+        // std::cerr << "DEBUG C++ Rules: get_valid_moves called for player " << static_cast<int>(current_p) << std::endl;
 
         auto add_promotions = [&](const board_position& start, const board_position& target, move_type base_type) {
             pseudo_legal_moves.push_back({base_type, start, target, piece_type::queen}); pseudo_legal_moves.push_back({base_type, start, target, piece_type::rook});
@@ -236,7 +236,7 @@ namespace chess {
             } else if (p.type == piece_type::king) {
                  const std::vector<board_offset>king_offsets={{1,1},{1,-1},{-1,1},{-1,-1},{1,0},{-1,0},{0,1},{0,-1}}; for(const auto&o:king_offsets){auto t=apply_offset(start_pos,o);if(t){piece tp=board.pieces[t->rank][t->file];if(tp.type==piece_type::none)pseudo_legal_moves.push_back({move_type::normal_move,start_pos,*t});else if(tp.piece_player==opponent_p)pseudo_legal_moves.push_back({move_type::capture,start_pos,*t});}} if(!board.in_check[static_cast<int>(current_p)]){int co=(current_p==player::white)?0:2; int cr=(current_p==player::white)?0:7; uint8_t ucr=static_cast<uint8_t>(cr); if(board.can_castle[co]&&board.pieces[cr][5].type==piece_type::none&&board.pieces[cr][6].type==piece_type::none&&!chess::ai::is_square_attacked(board,{ucr,4},opponent_p)&&!chess::ai::is_square_attacked(board,{ucr,5},opponent_p)&&!chess::ai::is_square_attacked(board,{ucr,6},opponent_p))pseudo_legal_moves.push_back({move_type::castle,start_pos,{ucr,6}}); if(board.can_castle[co+1]&&board.pieces[cr][1].type==piece_type::none&&board.pieces[cr][2].type==piece_type::none&&board.pieces[cr][3].type==piece_type::none&&!chess::ai::is_square_attacked(board,{ucr,4},opponent_p)&&!chess::ai::is_square_attacked(board,{ucr,3},opponent_p)&&!chess::ai::is_square_attacked(board,{ucr,2},opponent_p))pseudo_legal_moves.push_back({move_type::castle,start_pos,{ucr,2}}); }
             }
-            // std::cerr << "  DEBUG C++ Rules: Finished piece type " << std::endl;
+            // std::cerr << "DEBUG C++ Rules: Finished piece type " << std::endl;
         } // End file loop
         // std::cerr << "DEBUG C++ Rules: Finished piece loops..." << std::endl;
 
@@ -256,7 +256,7 @@ namespace chess {
                  if (!is_player_in_check(next_state, current_p)) { legal_moves.push_back(move); }
             } catch (...) { /* Ignore errors during legality check */ }
         }
-        std::cerr << "DEBUG C++ Rules: Filtered down to " << legal_moves.size() << " legal moves." << std::endl;
+        // std::cerr << "DEBUG C++ Rules: Filtered down to " << legal_moves.size() << " legal moves." << std::endl;
         return legal_moves;
     }
 
