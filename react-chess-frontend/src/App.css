@@ -175,3 +175,53 @@
   color: #888;
   cursor: not-allowed;
 }
+
+/* Game Container */
+.game-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+}
+
+/* Board Container */
+.board-container {
+  flex: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Sidebar */
+.sidebar {
+  flex: 1;
+  margin-left: 20px;
+  padding: 15px;
+  background-color: #333;
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar h2 {
+  margin-bottom: 10px;
+  font-size: 1.5em;
+  text-align: center;
+}
+
+.sidebar .game-info-section {
+  margin-bottom: 20px;
+}
+
+.sidebar .game-info-section strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 1.1em;
+}
+
+.sidebar .game-info-section p {
+  margin: 0;
+  font-size: 1em;
+  color: #ddd;
+}

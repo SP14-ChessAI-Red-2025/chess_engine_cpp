@@ -24,6 +24,8 @@ function App() {
   const [playerColor, setPlayerColor] = useState(null);
   const [boardStateHistory, setBoardStateHistory] = useState(new Map());
   const [fiftyMoveCounter, setFiftyMoveCounter] = useState(0);
+  const [moveHistory, setMoveHistory] = useState([]); // Tracks moves in chess notation
+  const [boardEvaluation, setBoardEvaluation] = useState(null); // Stores the evaluation score
 
   // --- Helper to Get Status String ---
   const getGameStatusMessage = (state) => {
@@ -114,6 +116,19 @@ function App() {
     return newState;
   }, [isLoading, fetchValidMoves]);
 
+  const fetchBoardEvaluation = useCallback(async () => {
+    if (!boardState) return; // Ensure board state exists before fetching evaluation
+    try {
+      const response = await fetch(`${API_URL}/evaluate`);
+      if (!response.ok) throw new Error(`Failed to fetch evaluation: ${response.status}`);
+      const data = await response.json();
+      setBoardEvaluation(data.evaluation); // Update the evaluation score
+    } catch (error) {
+      console.error("Error fetching board evaluation:", error);
+      setBoardEvaluation(null); // Reset evaluation on error
+    }
+  }, [boardState]);
+
   const updateBoardStateWithHistory = (newState) => {
     setBoardState((prevState) => {
       if (!newState || !newState.pieces) return prevState;
@@ -137,6 +152,11 @@ function App() {
         return newHistory;
       });
 
+      // Update the move history
+      if (newState.last_move && newState.last_move.notation) {
+        setMoveHistory((prevHistory) => [...prevHistory, newState.last_move.notation]);
+      }
+
       // Update the fifty-move counter
       if (newState.last_move && (newState.last_move.piece === PieceType.PAWN || newState.last_move.is_capture)) {
         setFiftyMoveCounter(0); // Reset counter on pawn move or capture
@@ -155,31 +175,44 @@ function App() {
     });
   };
 
-  // --- Reset Game ---
-  const returnToModeSelect = useCallback(async () => {
-    setIsLoading(true);
-    setStatusMessage("Resetting game...");
-    try {
-      console.log("Calling /api/reset...");
-      const response = await fetch(`${API_URL}/reset`, { method: 'POST' });
-      if (!response.ok) throw new Error("Failed to reset game on backend.");
-      console.log("Reset successful on backend.");
+  const getCastlingRights = (state) => {
+    if (!state || !state.castling_rights) return "Unavailable";
+    const { white, black } = state.castling_rights;
+    return `White: ${white ? "O-O, O-O-O" : "None"} | Black: ${black ? "O-O, O-O-O" : "None"}`;
+  };
 
-      // Reset frontend state fully
-      setGameMode(GameMode.SELECT);
-      setBoardState(null);
+  // --- Reset Game ---
+  const returnToModeSelect = useCallback(() => {
+    setGameMode(GameMode.SELECT);
+    setBoardState(null);
+    setValidMoves([]);
+    setSelectedSquare(null);
+    setPlayerColor(null);
+    setFiftyMoveCounter(0); // Reset fifty-move counter
+    setStatusMessage("Select Game Mode");
+  }, []);
+
+  const handleResetGame = useCallback(async () => {
+    setIsLoading(true);
+    setStatusMessage("Resetting board...");
+    try {
+      console.log("Fetching initial game state for reset...");
+      const newState = await fetchInitialGameState("handleResetGame");
+      if (!newState) throw new Error("Failed to fetch initial game state.");
+
+      // Reset the board state while keeping the current game mode
+      setBoardState(newState); // Use the initial state fetched from the backend
       setValidMoves([]);
       setSelectedSquare(null);
-      setPlayerColor(null);
       setFiftyMoveCounter(0); // Reset fifty-move counter
-      setStatusMessage("Select Game Mode");
+      setStatusMessage("Board reset successfully.");
     } catch (error) {
-      console.error("Error resetting game:", error);
-      setStatusMessage("Error resetting game.");
+      console.error("Error resetting board:", error);
+      setStatusMessage(`Error resetting board: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchInitialGameState]);
 
   // --- Start Game ---
   const handleGameModeSelect = useCallback((mode) => {
@@ -296,6 +329,9 @@ function App() {
   // Dependencies: This effect re-runs if any of these change
   }, [boardState, gameMode, isLoading, triggerAiMove]);
 
+  useEffect(() => {
+    fetchBoardEvaluation();
+  }, [boardState, fetchBoardEvaluation]);
 
   // --- Handle Square Click Logic ---
   const handleSquareClick = useCallback(async (rank, file) => {
@@ -383,38 +419,78 @@ function App() {
     {gameMode === GameMode.SELECT ? (
       <GameModeSelector onSelectMode={handleGameModeSelect} />
     ) : (
-      <>
-        <h1>Chess AI</h1>
+      <div className="game-container">
+        <div className="board-container">
+          <h1>Chess AI</h1>
 
-        {/* Game Status */}
-        <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
+          {/* Game Status */}
+          <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
 
-        {/* Board or Loading Message */}
-        {boardState && Array.isArray(boardState.pieces) ? (
-          <Board
-            boardPieces={boardState.pieces}
-            onSquareClick={handleSquareClick}
-            selectedSquare={selectedSquare}
-            highlightSquares={highlightSquares}
-          />
-        ) : (
-          <div className="loading">{isLoading ? 'Loading...' : 'Waiting for Server...'}</div>
-        )}
+          {/* Board or Loading Message */}
+          {boardState && Array.isArray(boardState.pieces) ? (
+            <Board
+              boardPieces={boardState.pieces}
+              onSquareClick={handleSquareClick}
+              selectedSquare={selectedSquare}
+              highlightSquares={highlightSquares}
+            />
+          ) : (
+            <div className="loading">{isLoading ? 'Loading...' : 'Waiting for Server...'}</div>
+          )}
 
-        {/* Resign Button */}
-        <button
-          onClick={handleResign}
-          disabled={isLoading || !boardState || boardState.status !== GameStatus.NORMAL}
-          style={{ marginTop: '15px', marginRight: '10px' }}
-        >
-          Resign
-        </button>
+          {/* Resign Button */}
+          <button
+            onClick={handleResign}
+            disabled={isLoading || !boardState || boardState.status !== GameStatus.NORMAL}
+            style={{ marginTop: '15px', marginRight: '10px' }}
+          >
+            Resign
+          </button>
 
-        {/* Change Mode Button */}
-        <button onClick={returnToModeSelect} disabled={isLoading} style={{ marginTop: '15px' }}>
-          Change Mode / Reset
-        </button>
-      </>
+          {/* Reset Board Button */}
+          <button
+            onClick={handleResetGame}
+            disabled={isLoading}
+            style={{ marginTop: '15px', marginRight: '10px' }}
+          >
+            Reset Board
+          </button>
+
+          {/* Change Mode Button */}
+          <button
+            onClick={returnToModeSelect}
+            disabled={isLoading}
+            style={{ marginTop: '15px' }}
+          >
+            Change Mode
+          </button>
+        </div>
+
+        {/* Sidebar */}
+        <div className="sidebar">
+          <h2>Game Info</h2>
+          <div className="game-info-section">
+            <strong>Castling Rights:</strong>
+            <p>{getCastlingRights(boardState)}</p>
+          </div>
+          <div className="game-info-section">
+            <strong>Move History:</strong>
+            <ol>
+              {moveHistory.map((move, index) => (
+                <li key={index}>{move}</li>
+              ))}
+            </ol>
+          </div>
+          <div className="game-info-section">
+            <strong>Board Evaluation:</strong>
+            <p>
+              {boardEvaluation !== null
+                ? `${boardEvaluation > 0 ? "White" : "Black"} is ahead (${boardEvaluation.toFixed(2)})`
+                : "Evaluating..."}
+            </p>
+          </div>
+        </div>
+      </div>
     )}
   </div>
 );

@@ -309,10 +309,21 @@ def trigger_ai_move(): # Conditional Workaround Applied
         app.logger.error(f"Error in /api/ai_move: {e}", exc_info=True)
         return jsonify({"error": "Server error during AI move"}), 500
 
+@app.route('/api/evaluate', methods=['GET'])
+def evaluate_board():
+    global engine
+    with engine_lock:
+        try:
+            # Evaluate the current board state
+            evaluation = engine.evaluate_board()
+            return jsonify({"evaluation": evaluation}), 200
+        except Exception as e:
+            app.logger.error(f"Error evaluating board: {e}", exc_info=True)
+            return jsonify({"error": f"Failed to evaluate board: {e}"}), 500
+
 # --- reset endpoint remains the same ---
 @app.route('/api/reset', methods=['POST'])
 def reset_game():
-     # ... (Keep existing implementation) ...
     global engine
     with engine_lock:
         app.logger.info("Received request to reset engine...");
