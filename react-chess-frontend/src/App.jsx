@@ -166,15 +166,14 @@ function App() {
         throw new Error(errorData.error || `AI move failed: ${response.status}`);
       }
 
-      // --- FIX: Use the response directly ---
       const newState = await response.json();
       console.log("Received new state directly from POST /api/ai_move:", newState);
+      newState.current_player = (newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE);
       setBoardState(newState); // Update state with the direct response
       setStatusMessage(getGameStatusMessage(newState)); // Update status message
 
       // Fetch valid moves for the *next* player based on the newState
       await fetchValidMoves(newState);
-      // --- END FIX ---
 
     } catch (error) {
       console.error("Error during AI move:", error);
@@ -207,10 +206,6 @@ function App() {
     if (isAIsTurn) {
       // Trigger AI after a short delay
       isAIsTurn = false;
-      setBoardState((prevState) => ({
-        ...prevState,
-        current_player: prevState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE,
-      })); // Update current player
       const timeoutId = setTimeout(triggerAiMove, 500); // 500ms delay
       return () => clearTimeout(timeoutId); // Cleanup timeout on unmount/re-run
     }
