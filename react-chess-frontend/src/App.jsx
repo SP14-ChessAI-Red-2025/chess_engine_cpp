@@ -206,7 +206,11 @@ function App() {
     // If it's determined to be the AI's turn...
     if (isAIsTurn) {
       // Trigger AI after a short delay
-      isAIsTurn = false; // Reset flag to prevent multiple triggers
+      isAIsTurn = false;
+      setBoardState((prevState) => ({
+        ...prevState,
+        current_player: prevState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE,
+      })); // Update current player
       const timeoutId = setTimeout(triggerAiMove, 500); // 500ms delay
       return () => clearTimeout(timeoutId); // Cleanup timeout on unmount/re-run
     }
