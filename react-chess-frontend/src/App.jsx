@@ -129,6 +129,16 @@ function App() {
     }
   }, [boardState]);
 
+  const getTurnHistory = (history) => {
+    const turns = [];
+    for (let i = 0; i < history.length; i += 2) {
+      const whiteMove = history[i];
+      const blackMove = history[i + 1] || null; // Black move might not exist yet
+      turns.push({ white: whiteMove, black: blackMove });
+    }
+    return turns;
+  };
+
   const updateBoardStateWithHistory = (newState) => {
     setBoardState((prevState) => {
       if (!newState || !newState.pieces) return prevState;
@@ -178,7 +188,16 @@ function App() {
   const getCastlingRights = (state) => {
     if (!state || !state.castling_rights) return "Unavailable";
     const { white, black } = state.castling_rights;
-    return `White: ${white ? "O-O, O-O-O" : "None"} | Black: ${black ? "O-O, O-O-O" : "None"}`;
+
+    const whiteRights = [];
+    if (white.kingside) whiteRights.push("O-O");
+    if (white.queenside) whiteRights.push("O-O-O");
+
+    const blackRights = [];
+    if (black.kingside) blackRights.push("O-O");
+    if (black.queenside) blackRights.push("O-O-O");
+
+    return `White: ${whiteRights.length > 0 ? whiteRights.join(", ") : "None"} | Black: ${blackRights.length > 0 ? blackRights.join(", ") : "None"}`;
   };
 
   // --- Reset Game ---
@@ -466,20 +485,12 @@ function App() {
           </button>
         </div>
 
-        {/* Sidebar */}
+        {/* Game Info Sidebar */}
         <div className="sidebar">
           <h2>Game Info</h2>
           <div className="game-info-section">
             <strong>Castling Rights:</strong>
             <p>{getCastlingRights(boardState)}</p>
-          </div>
-          <div className="game-info-section">
-            <strong>Move History:</strong>
-            <ol>
-              {moveHistory.map((move, index) => (
-                <li key={index}>{move}</li>
-              ))}
-            </ol>
           </div>
           <div className="game-info-section">
             <strong>Board Evaluation:</strong>
@@ -488,6 +499,22 @@ function App() {
                 ? `${boardEvaluation > 0 ? "White" : "Black"} is ahead (${boardEvaluation.toFixed(2)})`
                 : "Evaluating..."}
             </p>
+          </div>
+        </div>
+
+        {/* Move History Sidebar */}
+        <div className="move-history-sidebar">
+          <h2>Move History</h2>
+          <div className="move-history-container">
+            {getTurnHistory(moveHistory).map((turn, index) => (
+              <div key={index} className="turn">
+                <strong>Turn {index + 1}:</strong>
+                <p>
+                  White: {turn.white || "—"} <br />
+                  Black: {turn.black || "—"}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

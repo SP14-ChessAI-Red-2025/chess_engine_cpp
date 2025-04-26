@@ -193,34 +193,44 @@
   align-items: center;
 }
 
-/* Sidebar */
-.sidebar {
+/* Move History Sidebar */
+.move-history-sidebar {
   flex: 1;
   margin-left: 20px;
   padding: 15px;
-  background-color: #333;
+  background-color: #222;
   color: white;
   border-radius: 8px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  max-height: 400px; /* Adjust as needed */
+  overflow-y: auto; /* Make it scrollable */
 }
 
-.sidebar h2 {
+.move-history-sidebar h2 {
   margin-bottom: 10px;
   font-size: 1.5em;
   text-align: center;
 }
 
-.sidebar .game-info-section {
-  margin-bottom: 20px;
+.move-history-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.sidebar .game-info-section strong {
+.turn {
+  padding: 10px;
+  background-color: #333;
+  border-radius: 5px;
+}
+
+.turn strong {
   display: block;
   margin-bottom: 5px;
   font-size: 1.1em;
 }
 
-.sidebar .game-info-section p {
+.turn p {
   margin: 0;
   font-size: 1em;
   color: #ddd;
