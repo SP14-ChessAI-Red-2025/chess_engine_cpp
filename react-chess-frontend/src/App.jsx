@@ -229,7 +229,6 @@ function App() {
     // If it's determined to be the AI's turn...
     if (isAIsTurn) {
       // Trigger AI after a short delay
-      isAIsTurn = false;
       const timeoutId = setTimeout(triggerAiMove, 500); // 500ms delay
       return () => clearTimeout(timeoutId); // Cleanup timeout on unmount/re-run
     }
