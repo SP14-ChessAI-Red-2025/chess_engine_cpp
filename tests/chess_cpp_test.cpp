@@ -221,3 +221,20 @@ TEST(ChessRules, ThreefoldRepetitionRule) {
 
     ASSERT_EQ(board_state.status, chess::game_status::draw_by_repetition);
 }
+
+TEST(ChessRules, EnPassant) {
+    std::size_t indices[] = {
+        5, 19,
+        20, 7
+    };
+
+    auto board_state = chess::board_state::initial_board_state();
+    chess::previous_board_states history = {};
+
+    apply_moves(indices, board_state, history);
+
+    ASSERT_TRUE(std::ranges::any_of(chess::get_valid_moves(board_state), [](chess::chess_move move) {
+        return move.type == chess::move_type::en_passant && move.start_position == chess::board_position{4, 0} &&
+               move.target_position == chess::board_position{5, 1};
+    }));
+}
