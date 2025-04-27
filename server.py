@@ -227,9 +227,11 @@ def trigger_ai_move():
         return jsonify({"error": "Chess engine not initialized"}), 500
 
     difficulty = 1
+    game_mode = None  # Default game mode
     if request.is_json and isinstance(request.json, dict):
-        try: 
+        try:
             difficulty = int(request.json.get('difficulty', 5))
+            game_mode = request.json.get('game_mode', None)  # Retrieve game mode from the request
         except (ValueError, TypeError):
             difficulty = 5
 
@@ -274,6 +276,12 @@ def trigger_ai_move():
                 app.logger.error(f"state_address_to_dict failed for address {new_state_address}")
                 return jsonify({"error": "Failed to convert board state after AI move"}), 500
             app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
+
+            # If the game mode is "Player Black vs AI White," switch the player after the AI move
+            # THIS SHOULDNT BE NEEDED, BUT IT IS FOR NOW. 
+            # SOMEHOW THE AI IS MOVING PERSISTENTLY IN THIS MODE.
+            if game_mode == "PLAYER_VS_AI_WHITE":
+                new_state_dict['current_player'] = Player.BLACK
 
         # Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
