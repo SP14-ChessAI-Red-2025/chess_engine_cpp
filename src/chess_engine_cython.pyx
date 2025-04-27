@@ -40,20 +40,21 @@ ctypedef move_type CMoveType
 ctypedef player CPlayer
 ctypedef game_status CGameStatus
 
-# --- C Function Declarations (MODIFIED SIGNATURES) ---
+# --- C Function Declarations ---
 cdef extern from "chess_cpp/python_api.hpp":
     void* engine_create(const char* model_path) nogil
     void engine_destroy(void* engine_handle_opaque) nogil
     CBoardState* engine_get_board_state(void* engine_handle_opaque) nogil
     size_t engine_get_valid_moves(void* engine_handle_opaque, CChessMove* out_moves_buffer, size_t buffer_capacity) nogil
-    CBoardState* engine_apply_move(void* engine_handle_opaque, const CChessMove* move) nogil # Returns state ptr or NULL
-    CBoardState* engine_ai_move(void* engine_handle_opaque, int difficulty, void* callback) nogil # Returns state ptr or NULL
+    CBoardState* engine_apply_move(void* engine_handle_opaque, const CChessMove* move) nogil
+    CBoardState* engine_ai_move(void* engine_handle_opaque, int difficulty, void* callback) nogil
     cython.bint engine_move_to_str(void* engine_handle_opaque, const CChessMove* move, char* buffer, size_t buffer_size) nogil
     void engine_cancel_search(void* engine_handle_opaque) nogil
+    double engine_evaluate_board(void* engine_handle_opaque) nogil 
 # *** ADDED PASS HERE to explicitly end the 'cdef extern from' block ***
 pass
 
-# --- Python Wrapper Classes (Indentation Verified) ---
+# --- Python Wrapper Classes ---
 cdef class BoardPosition:
     cdef CBoardPosition c_pos
 
@@ -87,7 +88,7 @@ cdef class Piece:
     cdef int _type
     cdef int _player
 
-    def __init__(self, int ptype, int player): # Correctly indented at class level
+    def __init__(self, int ptype, int player):
         self._type = ptype
         self._player = player
 
@@ -125,19 +126,19 @@ cdef class ChessMove:
         self.c_move.promotion_target = <CPieceType>promotion
 
     property type:
-        def __get__(self): # Correctly indented under property
+        def __get__(self):
              return self._type_py
 
     property start:
-        def __get__(self): # Correctly indented under property
+        def __get__(self):
              return self._start_pos_py
 
     property target:
-        def __get__(self): # Correctly indented under property
+        def __get__(self):
              return self._target_pos_py
 
     property promotion:
-        def __get__(self): # Correctly indented under property
+        def __get__(self):
              return self._promotion_py
 
     def __repr__(self): # Correctly indented at class level
@@ -145,9 +146,8 @@ cdef class ChessMove:
         return f"ChessMove(type={self.type}, start={self.start!r}, target={self.target!r}{promo_str})"
 
 
-# --- ChessEngine Class (Methods unchanged from last provided version) ---
+# --- ChessEngine Class ---
 cdef class ChessEngine:
-    # ... (Rest of ChessEngine class as provided in the previous response) ...
     cdef void* c_engine_handle
     cdef cython.bint _handle_valid
     cdef CChessMove* c_moves_buffer
@@ -225,6 +225,21 @@ cdef class ChessEngine:
             print("[ERROR CYTHON apply_move] engine_apply_move returned NULL.", file=sys.stderr)
             return 0
         return <ptrdiff_t>new_state_ptr
+
+    def evaluate_board(self) -> float:
+        """
+        Evaluate the current board state using the NNUE evaluator.
+        Returns a float representing the evaluation score.
+        """
+        self._check_handle()  # Ensure the engine handle is valid
+        cdef double evaluation = 0.0
+        try:
+            with nogil:
+                evaluation = engine_evaluate_board(self.c_engine_handle)
+            return evaluation
+        except Exception as e:
+            print(f"[ERROR CYTHON evaluate_board] {e}", file=sys.stderr)
+            return 0.0  # Return a default value on error
 
     def ai_move(self, int difficulty) -> ptrdiff_t:
         self._check_handle()
