@@ -215,6 +215,16 @@ function App() {
     return `White: ${whiteRights.length > 0 ? whiteRights.join(", ") : "None"}\nBlack: ${blackRights.length > 0 ? blackRights.join(", ") : "None"}`;
   };
 
+  // Render with <br /> tags
+  <p>
+    {getCastlingRights(boardState).split("\n").map((line, index) => (
+      <React.Fragment key={index}>
+        {line}
+        <br />
+      </React.Fragment>
+    ))}
+  </p>
+
   // --- Reset Game ---
   const handleResetGame = useCallback(async () => {
     setIsLoading(true);

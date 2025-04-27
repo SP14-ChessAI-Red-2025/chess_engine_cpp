@@ -44,10 +44,9 @@ frontend_url = os.environ.get("FRONTEND_URL", "https://sp14-chessai-red-2025.git
 CORS(app, resources={r"/api/*": {"origins": [frontend_url]}})
 app.logger.info(f"CORS enabled for origin: {frontend_url}")
 
-# --- Global Variables ---
+# --- Global Engine Instance & Lock ---
 engine_lock = threading.Lock()
 engine = None
-ai_player = None  # Global variable to store the AI's player color
 
 # --- Engine Initialization ---
 try:
@@ -216,37 +215,42 @@ def apply_move_api():
         return jsonify({"error": "Server error applying move"}), 500
 
 
+# Add a global variable to track the AI's color
+ai_player = None  # Default to None for AI vs AI mode
+
 @app.route('/api/ai_move', methods=['POST'])
 def trigger_ai_move():
     """Triggers AI move, gets new state pointer from engine, returns corrected state dict."""
     global ai_player
+
     if not engine:
         return jsonify({"error": "Chess engine not initialized"}), 500
 
     difficulty = 1
     if request.is_json and isinstance(request.json, dict):
-        try:
+        try: 
             difficulty = int(request.json.get('difficulty', 5))
         except (ValueError, TypeError):
             difficulty = 5
 
     try:
-        # Retrieve the current board state
+        new_state_dict = None
         with engine_lock:
+            # Check if it's the AI's turn, unless in AI vs AI mode
             current_address = engine.board_state_address
             current_state = state_address_to_dict(current_address)
             if current_state is None:
-                return jsonify({"error": "Failed to retrieve current board state"}), 500
+                return jsonify({"error": "Failed to retrieve current state"}), 500
 
-        # Guard: Check if it is the AI's turn, bypass if ai_player is None (AI vs AI mode)
-        if ai_player is not None and current_state['current_player'] != ai_player:
-            return jsonify({"error": "It is not the AI's turn"}), 400
+            current_player = current_state.get('current_player')
+            if ai_player is not None and current_player != ai_player:
+                app.logger.warning("AI attempted to move out of turn. Correcting current player.")
+                # Update the current player to the correct one
+                current_state['current_player'] = current_player
+                return jsonify(current_state), 200
 
-        new_state_dict = None
-        with engine_lock:
+            # Proceed with AI move
             start_time = time.time()
-
-            # === Call engine.ai_move wrapper, get POINTER back ===
             new_state_ptr = engine.ai_move(difficulty=difficulty)  # Assumes wrapper returns POINTER(BoardState)
             end_time = time.time()
             app.logger.info(f"AI move calculation attempt finished in {end_time - start_time:.2f} seconds.")
@@ -262,11 +266,10 @@ def trigger_ai_move():
 
             app.logger.debug(f"engine.ai_move returned pointer: {new_state_ptr}")
 
-            # === Convert state using the returned pointer ===
+            # Convert state using the returned pointer
             new_state_address = cast(new_state_ptr, c_void_p).value
             app.logger.debug(f"Attempting state_address_to_dict with address: {new_state_address}")
             new_state_dict = state_address_to_dict(new_state_address)
-
             if new_state_dict is None:
                 app.logger.error(f"state_address_to_dict failed for address {new_state_address}")
                 return jsonify({"error": "Failed to convert board state after AI move"}), 500
@@ -296,28 +299,11 @@ def evaluate_board():
 # --- reset endpoint remains the same ---
 @app.route('/api/reset', methods=['POST'])
 def reset_game():
-    global engine, ai_player
+    global engine
     with engine_lock:
         app.logger.info("Received request to reset engine...")
         try:
-            # Parse game mode from the request
-            if not request.is_json:
-                return jsonify({"error": "Request must be JSON"}), 400
-            data = request.json
-            game_mode = data.get('game_mode', None)
-
-            if game_mode not in ["PLAYER_VS_AI_WHITE", "PLAYER_VS_AI_BLACK", "AI_VS_AI"]:
-                return jsonify({"error": "Invalid game mode"}), 400
-
-            # Determine AI player based on game mode
-            if game_mode == "PLAYER_VS_AI_WHITE":
-                ai_player = Player.BLACK
-            elif game_mode == "PLAYER_VS_AI_BLACK":
-                ai_player = Player.WHITE
-            elif game_mode == "AI_VS_AI":
-                ai_player = None  # Both players are AI in this mode
-
-            # Reset the engine
+            # Call the reset method on the engine
             engine.reset()  # Assuming `reset` is a method in the ChessEngine class
 
             # Get the initial board state after resetting
@@ -326,8 +312,8 @@ def reset_game():
             if state_dict is None:
                 return jsonify({"error": "Engine reset but failed to retrieve state"}), 500
 
-            app.logger.info(f"Engine successfully reset. AI player: {ai_player}")
-            return jsonify({"message": "Game reset", "initial_state": state_dict, "ai_player": ai_player}), 200
+            app.logger.info("Engine successfully reset.")
+            return jsonify({"message": "Game reset", "initial_state": state_dict}), 200
         except Exception as e:
             app.logger.error(f"Error during reset: {e}", exc_info=True)
             return jsonify({"error": f"Failed reset: {e}"}), 500

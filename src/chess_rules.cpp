@@ -186,7 +186,7 @@ namespace chess {
         }
         // Apply move using internal helper (modifies board by reference now)
         board = apply_move_impl(board, move); // Overwrite board with result
-        std::cerr << "DEBUG C++ Rules: current_player: " << static_cast<int>(board.current_player) << std::endl;
+        // std::cerr << "DEBUG C++ Rules: current_player: " << static_cast<int>(board.current_player) << std::endl;
 
         // Add state to history AFTER move is applied
         if (board.status == game_status::normal) { // Add only if game continues
