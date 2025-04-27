@@ -14,7 +14,6 @@ import traceback # For detailed error printing
 # Ensure these exactly match the layout in C++ headers
 
 class BoardPosition(Structure):
-    _pack_ = 1 # Explicitly pack structure (Keep this from previous attempt)
     _fields_ = [("rank", c_uint8), # Corresponds to uint8_t
                 ("file", c_uint8)] # Corresponds to uint8_t
     def __repr__(self):
@@ -29,7 +28,6 @@ class Piece(Structure):
         return f"Piece(t={self.type}, p={self.piece_player})"
 
 class ChessMove(Structure):
-    _pack_ = 1 # Explicitly pack structure
     _fields_ = [("type", c_int8),             # Corresponds to move_type enum
                 ("start_position", BoardPosition),
                 ("target_position", BoardPosition),
@@ -40,7 +38,6 @@ class ChessMove(Structure):
 
 
 class BoardState(Structure):
-    _pack_ = 1 # Explicitly pack structure
     _fields_ = [("pieces", (Piece * 8) * 8),
                 ("can_castle", c_bool * 4),
                 ("in_check", c_bool * 2),
@@ -48,8 +45,7 @@ class BoardState(Structure):
                 ("turns_since_last_capture_or_pawn", c_int32),
                 ("current_player", c_int8),
                 ("status", c_int8),
-                ("can_claim_draw", c_bool),
-                ("_padding_", c_uint8 * 3)]
+                ("can_claim_draw", c_bool)]
 
 # --- Enums (for reference and potential use in Python logic) ---
 class PieceType:

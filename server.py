@@ -36,7 +36,9 @@ MODEL_PATH = "model/trained_nnue.onnx"
 class CtypesBoardPosition(Structure): _pack_=1; _fields_=[("rank",c_uint8),("file",c_uint8)]
 class CtypesPiece(Structure): _pack_=1; _fields_=[("type",c_int8),("piece_player",c_int8)]
 class CtypesChessMove(Structure): _pack_=1; _fields_=[("type",c_int8),("start_position",CtypesBoardPosition),("target_position",CtypesBoardPosition),("promotion_target",c_int8)]
-class CtypesBoardState(Structure): _pack_=1; _fields_=[("pieces",(CtypesPiece*8)*8),("can_castle",c_bool*4),("in_check",c_bool*2),("en_passant_valid",c_bool*16),("turns_since_last_capture_or_pawn",c_int32),("current_player",c_int8),("status",c_int8),("can_claim_draw",c_bool),("_padding_",c_uint8*3)]
+class CtypesBoardState(Structure): _pack_=1; _fields_=[("pieces",(CtypesPiece*8)*8),("can_castle",c_bool*4),
+                                                       ("in_check",c_bool*2),("en_passant_valid",c_bool*16),("turns_since_last_capture_or_pawn",c_int32),
+                                                       ("current_player",c_int8),("status",c_int8),("can_claim_draw",c_bool)]
 
 # --- Flask App Setup ---
 app = Flask(__name__)
