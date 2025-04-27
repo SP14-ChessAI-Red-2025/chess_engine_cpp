@@ -178,9 +178,6 @@ def apply_move_api(): # Conditional Workaround Applied
             if move_address_to_apply == 0:
                 return jsonify({"error": "Move address not found in valid moves"}), 400
 
-            # REMOVED: Don't get the object here:
-            # move_obj_to_apply = CtypesChessMove.from_address(move_address_to_apply)
-
             # 3. Call engine.apply_move (from Cython) with the INTEGER ADDRESS
             app.logger.debug(f"Calling engine.apply_move with address: {move_address_to_apply}")
             # Pass the integer address directly
@@ -204,13 +201,12 @@ def apply_move_api(): # Conditional Workaround Applied
             app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
             # === CONDITIONAL WORKAROUND (Logic remains the same) ===
-            if 'current_player' in new_state_dict:
-                player_read_from_state = new_state_dict['current_player']
-                if previous_player is not None and player_read_from_state == previous_player:
-                    expected_next_player = 1 - previous_player
-                    app.logger.warning(f"CONDITIONAL WORKAROUND: Player read ({player_read_from_state}) matches previous player ({previous_player}). Flipping to {expected_next_player}.")
-                    new_state_dict['current_player'] = expected_next_player
-                # ... (rest of conditional logic and logging) ...
+            #if 'current_player' in new_state_dict:
+            #    player_read_from_state = new_state_dict['current_player']
+            #    if previous_player is not None and player_read_from_state == previous_player:
+            #        expected_next_player = 1 - previous_player
+            #        app.logger.warning(f"CONDITIONAL WORKAROUND: Player read ({player_read_from_state}) matches previous player ({previous_player}). Flipping to {expected_next_player}.")
+            #        new_state_dict['current_player'] = expected_next_player
             # === END WORKAROUND ===
 
         # 5. Return the potentially modified dictionary
@@ -285,18 +281,17 @@ def trigger_ai_move(): # Conditional Workaround Applied
              app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
              # === CONDITIONAL WORKAROUND ===
-             if 'current_player' in new_state_dict:
-                 player_read_from_state = new_state_dict['current_player']
-
+             #if 'current_player' in new_state_dict:
+             #    player_read_from_state = new_state_dict['current_player']
                  # Only flip if the player read matches the player *who just moved* (the AI)
-                 if player_read_from_state == previous_player:
-                     expected_next_player = 1 - previous_player
-                     app.logger.warning(f"CONDITIONAL WORKAROUND (AI): Player read ({player_read_from_state}) matches previous player ({previous_player}). Flipping to {expected_next_player}.")
-                     new_state_dict['current_player'] = expected_next_player
-                 else:
-                      app.logger.info(f"Conditional workaround (AI) NOT needed: Player read ({player_read_from_state}) is already different from previous player ({previous_player}).")
-             else:
-                  app.logger.error("Cannot apply conditional workaround (AI): 'current_player' key missing.")
+             #    if player_read_from_state == previous_player:
+             #        expected_next_player = 1 - previous_player
+             #        app.logger.warning(f"CONDITIONAL WORKAROUND (AI): Player read ({player_read_from_state}) matches previous player ({previous_player}). Flipping to {expected_next_player}.")
+             #        new_state_dict['current_player'] = expected_next_player
+             #    else:
+             #         app.logger.info(f"Conditional workaround (AI) NOT needed: Player read ({player_read_from_state}) is already different from previous player ({previous_player}).")
+             #else:
+             #     app.logger.error("Cannot apply conditional workaround (AI): 'current_player' key missing.")
              # === END WORKAROUND ===
 
         # Return the potentially modified dictionary

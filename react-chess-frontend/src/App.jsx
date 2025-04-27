@@ -224,21 +224,21 @@ function App() {
       const response = await fetch(`${API_URL}/reset`, { method: 'POST' });
       if (!response.ok) throw new Error(`Reset request failed: ${response.status}`);
       
-      const newState = await response.json();
-      if (!newState || typeof newState !== "object") throw new Error("Received invalid state from server");
-      console.log("Received reset state from backend:", newState);
+      const { initial_state, message } = await response.json();
+      if (!initial_state || typeof initial_state !== "object") throw new Error("Received invalid state from server");
+      console.log("Received reset state from backend:", initial_state);
 
       // Update the board state with the reset state
-      updateBoardStateWithHistory(newState);
+      updateBoardStateWithHistory(initial_state);
       setValidMoves([]); // Clear valid moves temporarily
       setSelectedSquare(null);
       setFiftyMoveCounter(0); // Reset fifty-move counter
       setBoardStateHistory(new Map()); // Clear the board state history
       setMoveHistory([]); // Clear move history
-      setStatusMessage("Board reset successfully.");
+      setStatusMessage(message || "Board reset successfully.");
 
       // Fetch valid moves for the new state
-      await fetchValidMoves(newState);
+      await fetchValidMoves(initial_state);
     } catch (error) {
       console.error("Error resetting board:", error);
       setStatusMessage(`Error resetting board: ${error.message}`);
