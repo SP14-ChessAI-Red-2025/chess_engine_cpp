@@ -77,11 +77,21 @@ def moves_to_list_ctypes(move_buffer_address, num_moves):
 def state_address_to_dict(address):
     if address == 0: app.logger.error("state_address_to_dict received NULL address."); return None
     try:
-        state_ptr = cast(address, POINTER(CtypesBoardState));
+        state_ptr = cast(address, POINTER(CtypesBoardState))
         if not state_ptr: app.logger.error("state_address_to_dict: cast NULL ptr."); return None
-        c_state = state_ptr.contents; py_state = {}; py_pieces = []
-        for r in range(8): py_pieces.append([{'type':c_state.pieces[r][f].type, 'player':c_state.pieces[r][f].piece_player} for f in range(8)])
-        py_state['pieces'] = py_pieces; py_state['current_player'] = c_state.current_player; py_state['can_castle'] = list(c_state.can_castle); py_state['in_check'] = list(c_state.in_check); py_state['en_passant_valid'] = list(c_state.en_passant_valid); py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn; py_state['status'] = c_state.status; py_state['can_claim_draw'] = c_state.can_claim_draw
+        c_state = state_ptr.contents
+        py_state = {}
+        py_pieces = []
+        for r in range(8): 
+            py_pieces.append([{'type':c_state.pieces[r][f].type, 'player':c_state.pieces[r][f].piece_player} for f in range(8)])
+        py_state['pieces'] = py_pieces
+        py_state['current_player'] = c_state.current_player
+        py_state['can_castle'] = list(c_state.can_castle)
+        py_state['in_check'] = list(c_state.in_check)
+        py_state['en_passant_valid'] = list(c_state.en_passant_valid)
+        py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn
+        py_state['status'] = c_state.status
+        py_state['can_claim_draw'] = c_state.can_claim_draw
         return py_state
     except Exception as e: app.logger.error(f"Error converting C state addr {address}: {e}", exc_info=True); return None
 
@@ -120,10 +130,13 @@ def get_valid_moves_api():
 @app.route('/api/apply_move', methods=['POST'])
 def apply_move_api():
     """ Applies player move, gets new state pointer from engine, returns corrected state dict. """
-    if not engine: return jsonify({"error": "Chess engine not initialized"}), 500
-    if not request.is_json: return jsonify({"error": "Request must be JSON"}), 400
+    if not engine: 
+        return jsonify({"error": "Chess engine not initialized"}), 500
+    if not request.is_json: 
+        return jsonify({"error": "Request must be JSON"}), 400
     data = request.json;
-    if not isinstance(data, dict): return jsonify({"error": "Invalid JSON format"}), 400
+    if not isinstance(data, dict): 
+        return jsonify({"error": "Invalid JSON format"}), 400
 
     try: # Extract and validate move data from JSON
         start_rank = int(data['start']['rank']); start_file = int(data['start']['file'])
@@ -185,6 +198,9 @@ def apply_move_api():
                  return jsonify({"error": "Failed to convert new board state"}), 500
             app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
+
+        new_state_dict['current_player'] = (Player.BLACK if new_state_dict['current_player'] == Player.WHITE else Player.WHITE)
+
         # 5. Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
         status_final = new_state_dict.get('status', 'N/A')
@@ -206,7 +222,8 @@ def trigger_ai_move():
 
     difficulty = 1
     if request.is_json and isinstance(request.json, dict):
-        try: difficulty = int(request.json.get('difficulty', 5))
+        try: 
+            difficulty = int(request.json.get('difficulty', 5))
         except (ValueError, TypeError): difficulty = 5
 
     try:
@@ -239,6 +256,7 @@ def trigger_ai_move():
                  return jsonify({"error": "Failed to convert board state after AI move"}), 500
              app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
+        new_state_dict['current_player'] = (Player.BLACK if new_state_dict['current_player'] == Player.WHITE else Player.WHITE)
 
         # Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')

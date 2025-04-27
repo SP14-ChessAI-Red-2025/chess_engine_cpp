@@ -145,7 +145,7 @@ function App() {
       const blackMove = history[i + 1] || null; // Black move might not exist yet
       turns.push({ white: whiteMove, black: blackMove });
     }
-    console.log("Processed Turn History:", turns);
+    // console.log("Processed Turn History:", turns);
     return turns;
   };
 
@@ -311,63 +311,58 @@ function App() {
       return;
     }
 
-    const newState = await response.json();
-    console.log("Received new state directly from POST /api/ai_move:", newState);
-    console.log("Received new state directly from POST /api/ai_move:", newState.current_player);
-    newState.current_player = newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE;
-    console.log("Received new state directly from POST /api/ai_move:", newState.current_player);
-
-    const isAIsTurn =
+  const isAIsTurn =
     (gameMode === GameMode.AI_VS_AI) ||
     (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) ||
     (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE);
 
-    if (!isAIsTurn) {
-      console.log("triggerAiMove skipped: not AI's turn.");
+  if (!isAIsTurn) {
+    console.log("triggerAiMove skipped: not AI's turn.");
+    return;
+  }
+
+  console.log("Triggering AI move...");
+  setIsLoading(true);
+  setStatusMessage("AI is thinking...");
+  setValidMoves([]);
+  setSelectedSquare(null);
+
+  try {
+    const response = await fetch(`${API_URL}/ai_move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `AI move failed: ${response.status}`);
+    }
+
+    const newState = await response.json();
+    console.log("Received new state directly from POST /api/ai_move:", newState);
+
+    // Check if the game is over
+    if (newState.status === GameStatus.CHECKMATE || newState.status === GameStatus.DRAW) {
+      console.log("Game over detected.");
+      updateBoardStateWithHistory(newState);
+      setStatusMessage(getGameStatusMessage(newState));
       return;
     }
 
-    console.log("Triggering AI move...");
-    setIsLoading(true);
-    setStatusMessage("AI is thinking...");
-    setValidMoves([]);
-    setSelectedSquare(null);
-
-    try {
-      const response = await fetch(`${API_URL}/ai_move`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `AI move failed: ${response.status}`);
-      }
-      
-      // Check if the game is over
-      if (newState.status === GameStatus.CHECKMATE || newState.status === GameStatus.DRAW) {
-        console.log("Game over detected.");
-        updateBoardStateWithHistory(newState);
-        setStatusMessage(getGameStatusMessage(newState));
-        return;
-      }
-
-      // Update current player and fetch valid moves
-      newState.current_player = newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE;
-      console.log("New state after player change:", newState);
-      updateBoardStateWithHistory(newState);
-      setStatusMessage(getGameStatusMessage(newState));
-      if (newState) {
-        await fetchValidMoves(newState);
-      }
-    } catch (error) {
-      console.error("Error during AI move:", error);
-      setStatusMessage(`Error during AI turn: ${error.message}`);
-    } finally {
-      setIsLoading(false);
+    // Update current player and fetch valid moves
+    updateBoardStateWithHistory(newState);
+    setStatusMessage(getGameStatusMessage(newState));
+    if (newState) {
+      await fetchValidMoves(newState);
     }
-  }, [isLoading, boardState, gameMode, fetchValidMoves]);
+  } catch (error) {
+    console.error("Error during AI move:", error);
+    setStatusMessage(`Error during AI turn: ${error.message}`);
+  } finally {
+    setIsLoading(false);
+  }
+}, [isLoading, boardState, gameMode, fetchValidMoves]);
 
 
   // --- Effect to Automatically Trigger AI Move (Keep as is) ---
@@ -408,71 +403,72 @@ function App() {
 
   // --- Handle Square Click Logic ---
   const handleSquareClick = useCallback(async (rank, file) => {
-    if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.AI_VS_AI) return;
-    const isPlayerTurn = playerColor !== null && boardState.current_player === playerColor;
-    if (!isPlayerTurn) return;
+  if (isLoading || !boardState || boardState.status !== GameStatus.NORMAL || gameMode === GameMode.AI_VS_AI) return;
+  const isPlayerTurn = playerColor !== null && boardState.current_player === playerColor;
+  if (!isPlayerTurn) return;
 
-    const clickedPiece = boardState.pieces[rank][file];
+  const clickedPiece = boardState.pieces[rank][file];
 
-    if (selectedSquare) {
-      const sourceSq = selectedSquare;
-      const targetSq = { rank, file };
+  if (selectedSquare) {
+    const sourceSq = selectedSquare;
+    const targetSq = { rank, file };
 
-      const move = validMoves.find(m =>
-        m.start.rank === sourceSq.rank && m.start.file === sourceSq.file &&
-        m.target.rank === targetSq.rank && m.target.file === targetSq.file
-      );
+    const move = validMoves.find(m =>
+      m.start.rank === sourceSq.rank && m.start.file === sourceSq.file &&
+      m.target.rank === targetSq.rank && m.target.file === targetSq.file
+    );
 
-      if (move) {
-        setIsLoading(true);
-        setStatusMessage("Applying move...");
-        setSelectedSquare(null);
-        setValidMoves([]);
+    if (move) {
+      setIsLoading(true);
+      setStatusMessage("Applying move...");
+      setSelectedSquare(null);
+      setValidMoves([]);
 
-        try {
-          const movePayload = {
-            start: move.start,
-            target: move.target,
-            promotion: PieceType.NONE,
-            current_player: boardState.current_player,
-          };
+      try {
+        const movePayload = {
+          start: move.start,
+          target: move.target,
+          promotion: PieceType.NONE,
+          current_player: boardState.current_player,
+        };
 
-          const response = await fetch(`${API_URL}/apply_move`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(movePayload),
-          });
+        const response = await fetch(`${API_URL}/apply_move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(movePayload),
+        });
 
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Move application failed: ${response.status}`);
-          }
-
-          const newState = await response.json();
-          console.log("Received new state directly from POST /api/apply_move:", newState);
-          updateBoardStateWithHistory(newState);
-          setStatusMessage(getGameStatusMessage(newState));
-          await fetchValidMoves(newState);
-        } catch (error) {
-          console.error("Error applying move:", error);
-          setStatusMessage(`Error applying move: ${error.message}`);
-          await fetchInitialGameState("handleSquareClick-error");
-        } finally {
-          setIsLoading(false);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Move application failed: ${response.status}`);
         }
-      } else {
-        if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
-          setSelectedSquare({ rank, file });
-        } else {
-          setSelectedSquare(null);
-        }
+
+        const newState = await response.json();
+        console.log("Received new state directly from POST /api/apply_move:", newState);
+        //newState.current_player = newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE;
+        updateBoardStateWithHistory(newState);
+        setStatusMessage(getGameStatusMessage(newState));
+        await fetchValidMoves(newState);
+      } catch (error) {
+        console.error("Error applying move:", error);
+        setStatusMessage(`Error applying move: ${error.message}`);
+        await fetchInitialGameState("handleSquareClick-error");
+      } finally {
+        setIsLoading(false);
       }
     } else {
       if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
         setSelectedSquare({ rank, file });
+      } else {
+        setSelectedSquare(null);
       }
     }
-  }, [isLoading, boardState, gameMode, playerColor, selectedSquare, validMoves, fetchValidMoves, fetchInitialGameState]);
+  } else {
+    if (clickedPiece.type !== PieceType.NONE && clickedPiece.player === playerColor) {
+      setSelectedSquare({ rank, file });
+    }
+  }
+}, [isLoading, boardState, gameMode, playerColor, selectedSquare, validMoves, fetchValidMoves, fetchInitialGameState]);
 
 
   // --- Calculate Highlight Squares ---
