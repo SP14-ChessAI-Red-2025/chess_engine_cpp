@@ -325,21 +325,22 @@ def evaluate_board():
 def reset_game():
     global engine
     with engine_lock:
-        app.logger.info("Received request to reset engine...");
+        app.logger.info("Received request to reset engine...")
         try:
-            abs_lib_path=os.path.abspath(os.path.join(project_root,LIBRARY_PATH));abs_model_path=os.path.abspath(os.path.join(project_root,MODEL_PATH))
-            if not os.path.exists(abs_lib_path): raise FileNotFoundError(f"Lib not found: {abs_lib_path}")
-            if not os.path.exists(abs_model_path): raise FileNotFoundError(f"Model not found: {abs_model_path}")
-            if engine:
-                try:
-                    engine.close()
-                except Exception as close_err:
-                    app.logger.warning(f"Error closing old engine: {close_err}")
-            engine = ChessEngine(library_path=abs_lib_path, model_path=abs_model_path); app.logger.info("Engine re-initialized.")
-            address = engine.board_state_address; state_dict = state_address_to_dict(address)
-            if state_dict is None: return jsonify({"error": "Engine reset but failed state"}), 500
+            # Call the reset method on the engine
+            engine.reset()  # Assuming `reset` is a method in the ChessEngine class
+
+            # Get the initial board state after resetting
+            address = engine.board_state_address
+            state_dict = state_address_to_dict(address)
+            if state_dict is None:
+                return jsonify({"error": "Engine reset but failed to retrieve state"}), 500
+
+            app.logger.info("Engine successfully reset.")
             return jsonify({"message": "Game reset", "initial_state": state_dict}), 200
-        except Exception as e: app.logger.error(f"Error during reset: {e}", exc_info=True); engine = None; return jsonify({"error": f"Failed reset: {e}"}), 500
+        except Exception as e:
+            app.logger.error(f"Error during reset: {e}", exc_info=True)
+            return jsonify({"error": f"Failed reset: {e}"}), 500
 
 # --- Run the Server ---
 if __name__ == '__main__':

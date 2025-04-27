@@ -51,7 +51,7 @@ cdef extern from "chess_cpp/python_api.hpp":
     cython.bint engine_move_to_str(void* engine_handle_opaque, const CChessMove* move, char* buffer, size_t buffer_size) nogil
     void engine_cancel_search(void* engine_handle_opaque) nogil
     double engine_evaluate_board(void* engine_handle_opaque) nogil 
-# *** ADDED PASS HERE to explicitly end the 'cdef extern from' block ***
+    void engine_reset_engine(void* engine_handle_opaque) nogil
 pass
 
 # --- Python Wrapper Classes ---
@@ -205,6 +205,13 @@ cdef class ChessEngine:
         self._check_handle()
         with nogil: c_state_ptr = engine_get_board_state(self.c_engine_handle)
         return <ptrdiff_t>c_state_ptr if c_state_ptr != NULL else 0
+
+    def reset(self):
+        """Resets the C++ engine state to the initial position."""
+        self._check_handle()
+        print("Cython ChessEngine: Requesting internal engine reset...")
+        with nogil: engine_reset_engine(self.c_engine_handle)
+        print("Cython ChessEngine: Internal reset request sent via C API.")
 
     def get_valid_moves_address_count(self) -> tuple[ptrdiff_t, int]:
         self._check_handle()

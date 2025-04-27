@@ -1,4 +1,4 @@
-// src/App.jsx (FIXED State Handling)
+// src/App.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Board from './Board';
 import GameModeSelector from './GameModeSelector';
@@ -82,21 +82,25 @@ function App() {
   }, []); // No dependencies needed
 
 
-  // --- Fetch Initial Game State (Only fetches state, moves fetched separately) ---
-  const fetchInitialGameState = useCallback(async (caller = "unknown") => {
-    const initialStateRef = useRef(null); // Store the initial state
+  // --- Fetch Initial Game State ---
+  const initialStateRef = useRef(null);
 
+  const fetchInitialGameState = useCallback(async (caller = "unknown") => {
     if (isLoading) {
       console.log(`fetchInitialGameState skipped by ${caller}: isLoading=true`);
       return null;
     }
 
-    if (initialStateRef.current) {
-      console.log(`Using saved initial state (called by ${caller})...`);
-      updateBoardStateWithHistory(initialStateRef.current); // Set the saved initial state
-      setStatusMessage(getGameStatusMessage(initialStateRef.current));
+    // Check if the initial state is already saved in localStorage
+    const savedState = localStorage.getItem("initialGameState");
+    if (savedState) {
+      console.log(`Using saved initial state from localStorage (called by ${caller})...`);
+      const parsedState = JSON.parse(savedState);
+      updateBoardStateWithHistory(parsedState); // Set the saved initial state
+      setStatusMessage(getGameStatusMessage(parsedState));
       setValidMoves([]); // Clear valid moves
-      return initialStateRef.current;
+      await fetchValidMoves(parsedState); // Fetch valid moves for the saved state
+      return parsedState;
     }
 
     console.log(`Fetching initial game state (called by ${caller})...`);
@@ -111,7 +115,9 @@ function App() {
       if (!newState || typeof newState !== "object") throw new Error("Received invalid state from server");
       console.log("Fetched Initial State:", newState);
 
-      initialStateRef.current = newState; // Save the initial state
+      // Save the initial state to localStorage
+      localStorage.setItem("initialGameState", JSON.stringify(newState));
+
       updateBoardStateWithHistory(newState); // Set initial state
       setStatusMessage(getGameStatusMessage(newState)); // Update status message
 
@@ -144,7 +150,7 @@ function App() {
       console.error("Error fetching board evaluation:", error);
       setBoardEvaluation(null); // Reset evaluation on error
     }
-  }, [boardState]);
+  }, [boardState, fetchInitialGameState]);
 
   const getTurnHistory = (history) => {
     const turns = [];
@@ -153,6 +159,7 @@ function App() {
       const blackMove = history[i + 1] || null; // Black move might not exist yet
       turns.push({ white: whiteMove, black: blackMove });
     }
+    console.log("Processed Turn History:", turns);
     return turns;
   };
 
@@ -181,6 +188,7 @@ function App() {
 
       // Update the move history
       if (newState.last_move && newState.last_move.notation) {
+        console.log("Adding move to history:", newState.last_move.notation);
         setMoveHistory((prevHistory) => [...prevHistory, newState.last_move.notation]);
       }
 
@@ -217,7 +225,7 @@ function App() {
     if (blackKingside) blackRights.push("O-O");
     if (blackQueenside) blackRights.push("O-O-O");
 
-    return `White: ${whiteRights.length > 0 ? whiteRights.join(", ") : "None"} | Black: ${blackRights.length > 0 ? blackRights.join(", ") : "None"}`;
+    return `White: ${whiteRights.length > 0 ? whiteRights.join(", ") : "None"}\nBlack: ${blackRights.length > 0 ? blackRights.join(", ") : "None"}`;
   };
 
   // --- Reset Game ---
@@ -225,29 +233,40 @@ function App() {
     setIsLoading(true);
     setStatusMessage("Resetting board...");
     try {
-      console.log("Fetching initial game state for reset...");
-      const newState = await fetchInitialGameState("handleResetGame");
-      if (!newState) throw new Error("Failed to fetch initial game state.");
+      console.log("Sending reset request to backend...");
+      const response = await fetch(`${API_URL}/reset`, { method: 'POST' });
+      if (!response.ok) throw new Error(`Reset request failed: ${response.status}`);
+      
+      const newState = await response.json();
+      if (!newState || typeof newState !== "object") throw new Error("Received invalid state from server");
+      console.log("Received reset state from backend:", newState);
 
-      // Reset the board state while keeping the current game mode
-      setBoardStateHistory(new Map()); // Clear the board state history
+      // Update the board state with the reset state
       updateBoardStateWithHistory(newState);
-      setValidMoves([]);
+      setValidMoves([]); // Clear valid moves temporarily
       setSelectedSquare(null);
       setFiftyMoveCounter(0); // Reset fifty-move counter
+      setBoardStateHistory(new Map()); // Clear the board state history
+      setMoveHistory([]); // Clear move history
       setStatusMessage("Board reset successfully.");
+
+      // Fetch valid moves for the new state
+      await fetchValidMoves(newState);
     } catch (error) {
       console.error("Error resetting board:", error);
       setStatusMessage(`Error resetting board: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
-  }, [fetchInitialGameState]);
+  }, [fetchValidMoves]);
 
   const returnToModeSelect = useCallback(async () => {
     setIsLoading(true);
     setStatusMessage("Returning to mode selection...");
     try {
+      console.log("Resetting board before returning to mode selection...");
+      await handleResetGame(); // Trigger the reset method
+
       console.log("Fetching initial game state for mode selection...");
       const newState = await fetchInitialGameState("returnToModeSelect");
       if (!newState) throw new Error("Failed to fetch initial game state.");
@@ -266,7 +285,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [fetchInitialGameState]);
+  }, [handleResetGame, fetchInitialGameState]);
 
   // --- Start Game ---
   const handleGameModeSelect = useCallback((mode) => {
@@ -385,8 +404,12 @@ function App() {
 
   useEffect(() => {
     if (boardState) {
-      console.log("Board state changed, fetching evaluation...");
-      fetchBoardEvaluation();
+      const timeoutId = setTimeout(() => {
+        console.log("Board state changed, fetching evaluation...");
+        fetchBoardEvaluation();
+      }, 300); // Delay by 300ms
+
+      return () => clearTimeout(timeoutId); // Cleanup timeout on re-renders
     }
   }, [boardState, fetchBoardEvaluation]);
 
@@ -524,22 +547,22 @@ function App() {
         </div>
 
         {/* Game Info Sidebar */}
-          <div className="sidebar">
-            <h2>Game Info</h2>
-            <div className="game-info-section">
-              <strong>Castling Rights:</strong>
-              <p>{getCastlingRights(boardState)}</p>
-            </div>
-            <div className="game-info-section">
-              <strong>Board Evaluation:</strong>
-              <p>
-                {typeof boardEvaluation === "number"
-            ? `${boardEvaluation.toFixed(2)}`
-            : "Evaluating..."}
-              </p>
-            </div>
+        <div className="sidebar">
+          <h2>Game Info</h2>
+          <div className="game-info-section">
+            <strong>Castling Rights:</strong>
+            <p>{getCastlingRights(boardState)}</p>
+          </div>
+          <div className="game-info-section">
+            <strong>Board Evaluation:</strong>
+            <p>
+              {typeof boardEvaluation === "number"
+                ? `${boardEvaluation.toFixed(2)}`
+                : "Evaluating..."}
+            </p>
+          </div>
 
-            {/* Move History Section */}
+          {/* Move History Section */}
           <div className="move-history-section">
             <h2>Move History</h2>
             <div className="move-history-container">

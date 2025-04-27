@@ -89,6 +89,29 @@ extern "C" {
         } else { /* ... warning ... */ }
     }
 
+    DLLEXPORT void engine_reset_engine(void* engine_handle_opaque) noexcept {
+        if (!engine_handle_opaque) {
+            std::cerr << "[C API ERROR] reset_engine called with null handle." << std::endl;
+            return;
+        }
+    
+        EngineHandle* handle = static_cast<EngineHandle*>(engine_handle_opaque);
+        try {
+            // Reset the board state
+            handle->current_board = chess::board_state::initial_board_state();
+    
+            // Reset the history by replacing it with a new instance
+            handle->history = chess::previous_board_states();
+            handle->history.add_board_state(handle->current_board);
+    
+            std::cout << "[C API] engine_reset_engine: Engine successfully reset to initial state." << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[C API ERROR] Exception during engine_reset_engine: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "[C API ERROR] Unknown exception during engine_reset_engine." << std::endl;
+        }
+    }
+
     // --- Board State Access --- 
     DLLEXPORT chess::board_state* engine_get_board_state(void* engine_handle_opaque) noexcept {
         if (!engine_handle_opaque) { /* ... error handling ... */ return nullptr; }

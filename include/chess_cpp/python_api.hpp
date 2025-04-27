@@ -100,6 +100,13 @@ extern "C" {
      */
     DLLEXPORT double engine_evaluate_board(void* engine_handle_opaque) noexcept;
 
+    // --- Reset Engine ---
+    /**
+     * @brief Resets the engine's internal state.
+     * @param engine_handle_opaque Opaque pointer to the EngineHandle.
+     */
+    DLLEXPORT void engine_reset_engine(void* engine_handle_opaque) noexcept;
+
 } // extern "C"
 
 #endif // CHESS_CPP_PYTHON_API_HPP
