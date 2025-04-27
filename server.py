@@ -227,7 +227,7 @@ def trigger_ai_move():
         return jsonify({"error": "Chess engine not initialized"}), 500
 
     difficulty = 1
-    game_mode = None  # Default game mode
+    game_mode = None 
     if request.is_json and isinstance(request.json, dict):
         try:
             difficulty = int(request.json.get('difficulty', 5))
@@ -272,6 +272,8 @@ def trigger_ai_move():
             new_state_address = cast(new_state_ptr, c_void_p).value
             app.logger.debug(f"Attempting state_address_to_dict with address: {new_state_address}")
             new_state_dict = state_address_to_dict(new_state_address)
+            # WE TRY TO SWITCH THE PLAYER HERE
+            new_state_dict['current_player'] = (Player.BLACK if new_state_dict['current_player'] == Player.WHITE else Player.WHITE)
             if new_state_dict is None:
                 app.logger.error(f"state_address_to_dict failed for address {new_state_address}")
                 return jsonify({"error": "Failed to convert board state after AI move"}), 500
@@ -280,8 +282,9 @@ def trigger_ai_move():
             # If the game mode is "Player Black vs AI White," switch the player after the AI move
             # THIS SHOULDNT BE NEEDED, BUT IT IS FOR NOW. 
             # SOMEHOW THE AI IS MOVING PERSISTENTLY IN THIS MODE.
-            if game_mode == "PLAYER_VS_AI_WHITE":
-                new_state_dict['current_player'] = Player.BLACK
+            # AND IT DOESNT EVEN WORK...
+            #if game_mode == "PLAYER_VS_AI_WHITE":
+            #    new_state_dict['current_player'] = Player.BLACK
 
         # Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
