@@ -179,7 +179,7 @@ namespace chess {
         // Get info before clearing history
         piece moved_piece = {}; bool is_capture = false;
         if (in_bounds(move.start_position.rank, move.start_position.file)) moved_piece = board.pieces[move.start_position.rank][move.start_position.file]; else throw std::logic_error("apply_move invalid start");
-        if (in_bounds(move.target_position.rank, move.target_position.file)) is_capture = (board.pieces[move.target_position.rank][move.target_position.file].type != piece_type::none) || (move.type == move_type::en_passant)else throw std::logic_error("apply_move invalid target");
+        if (in_bounds(move.target_position.rank, move.target_position.file)) is_capture = (board.pieces[move.target_position.rank][move.target_position.file].type != piece_type::none) || (move.type == move_type::en_passant); else throw std::logic_error("apply_move invalid target");
 
         if (moved_piece.type == piece_type::pawn || is_capture) {
             history.clear_history_on_irreversible_move(move, moved_piece);
