@@ -14,24 +14,23 @@ import traceback # For detailed error printing
 # Ensure these exactly match the layout in C++ headers
 
 class BoardPosition(Structure):
-    _fields_ = [("rank", c_uint8), # Corresponds to uint8_t
-                ("file", c_uint8)] # Corresponds to uint8_t
+    _fields_ = [("rank", c_uint8),
+                ("file", c_uint8)]
     def __repr__(self):
         return f"Pos(r={self.rank}, f={self.file})"
 
 
 class Piece(Structure):
-    _pack_ = 1 # Explicitly pack structure
-    _fields_ = [("type", c_int8),         # Corresponds to piece_type enum
-                ("piece_player", c_int8)] # Corresponds to player enum
+    _fields_ = [("type", c_int8), 
+                ("piece_player", c_int8)]
     def __repr__(self):
         return f"Piece(t={self.type}, p={self.piece_player})"
 
 class ChessMove(Structure):
-    _fields_ = [("type", c_int8),             # Corresponds to move_type enum
+    _fields_ = [("type", c_int8),
                 ("start_position", BoardPosition),
                 ("target_position", BoardPosition),
-                ("promotion_target", c_int8)] # Corresponds to piece_type enum
+                ("promotion_target", c_int8)]
     def __repr__(self):
          return (f"Move(t={self.type}, start={self.start_position}, "
                  f"target={self.target_position}, promo={self.promotion_target})")
