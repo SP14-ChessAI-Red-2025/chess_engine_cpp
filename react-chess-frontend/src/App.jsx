@@ -221,7 +221,11 @@ function App() {
     setStatusMessage("Resetting board...");
     try {
       console.log("Sending reset request to backend...");
-      const response = await fetch(`${API_URL}/reset`, { method: 'POST' });
+      const response = await fetch(`${API_URL}/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_mode: gameMode }), // Include gameMode in the request
+      });
       if (!response.ok) throw new Error(`Reset request failed: ${response.status}`);
       
       const { initial_state, message } = await response.json();
@@ -245,7 +249,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [fetchValidMoves]);
+  }, [fetchValidMoves, gameMode]);
 
   const returnToModeSelect = useCallback(async () => {
     setIsLoading(true);
