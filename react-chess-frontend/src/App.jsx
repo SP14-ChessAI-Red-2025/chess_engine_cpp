@@ -377,10 +377,10 @@ function App() {
       (gameMode === GameMode.PLAYER_VS_AI_WHITE && boardState.current_player === Player.BLACK) || // AI is Black (1)
       (gameMode === GameMode.PLAYER_VS_AI_BLACK && boardState.current_player === Player.WHITE); // AI is White (0)
 
-    console.log("DEBUG AI Effect: GameMode = ", gameMode); // Debug log
-    console.log("DEBUG AI Effect: Player Color =", playerColor); // Debug log
-    console.log("DEBUG AI Effect: Current Player =", boardState.current_player); // Debug log
-    console.log("DEBUG AI Effect: isAIsTurn =", isAIsTurn); // Debug log
+    // console.log("DEBUG AI Effect: GameMode = ", gameMode); // Debug log
+    // console.log("DEBUG AI Effect: Player Color =", playerColor); // Debug log
+    // console.log("DEBUG AI Effect: Current Player =", boardState.current_player); // Debug log
+    // console.log("DEBUG AI Effect: isAIsTurn =", isAIsTurn); // Debug log
 
     // If it's determined to be the AI's turn...
     if (isAIsTurn) {

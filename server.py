@@ -118,29 +118,12 @@ def get_valid_moves_api():
 
 
 @app.route('/api/apply_move', methods=['POST'])
-def apply_move_api(): # Conditional Workaround Applied
+def apply_move_api():
     """ Applies player move, gets new state pointer from engine, returns corrected state dict. """
     if not engine: return jsonify({"error": "Chess engine not initialized"}), 500
     if not request.is_json: return jsonify({"error": "Request must be JSON"}), 400
     data = request.json;
     if not isinstance(data, dict): return jsonify({"error": "Invalid JSON format"}), 400
-
-    # Get player who is making the move from the request data
-    # If frontend doesn't send this, we might need to fetch state first
-    previous_player = data.get('current_player', None) # Assuming frontend sends the player whose turn it was
-    if previous_player is None:
-        # Fallback: Fetch current state to determine player (adds overhead)
-        try:
-            with engine_lock:
-                addr = engine.board_state_address
-                state_dict_before = state_address_to_dict(addr)
-                if state_dict_before:
-                    previous_player = state_dict_before.get('current_player')
-        except Exception:
-            pass # Ignore error here, proceed without previous_player if fetch failed
-        if previous_player is None:
-             app.logger.warning("Could not determine previous player for conditional check.")
-             # Cannot perform conditional check without knowing previous player
 
     try: # Extract and validate move data from JSON
         start_rank = int(data['start']['rank']); start_file = int(data['start']['file'])
@@ -161,7 +144,7 @@ def apply_move_api(): # Conditional Workaround Applied
             if moves_buffer_address == 0 or num_moves == 0:
                  return jsonify({"error": "No valid moves available"}), 400
 
-            # 2. Find the matching C move ADDRESS (keep this!)
+            # 2. Find the matching C move ADDRESS
             move_address_to_apply = 0 # This will be the integer address
             move_ptr = cast(moves_buffer_address, POINTER(CtypesChessMove))
             for i in range(num_moves):
