@@ -142,26 +142,35 @@ extern "C" {
 
     // --- Apply Move ---
     DLLEXPORT chess::board_state* engine_apply_move(void* engine_handle_opaque,
-                                                    const chess::chess_move* move) noexcept { // Removed out_board_state*, returns pointer
+                                                    const chess::chess_move* move) noexcept {
         if (!engine_handle_opaque || !move) {
-             std::cerr << "[C API ERROR] engine_apply_move called with null handle or move." << std::endl;
-             return nullptr; // Return null on error
+            std::cerr << "[C API ERROR] engine_apply_move called with null handle or move." << std::endl;
+            return nullptr;
         }
         EngineHandle* handle = static_cast<EngineHandle*>(engine_handle_opaque);
 
         try {
-            // Apply the move - this MODIFIES handle->current_board by reference
+            // Apply the move - this modifies handle->current_board by reference
             chess::apply_move(handle->current_board, *move, handle->history);
+            std::cerr << "[DEBUG PYTHON API]: Before move, current_player: " 
+                      << static_cast<int>(handle->current_board.current_player) << std::endl;
+            // Update the current player
+            handle->current_board.current_player = 
+                (handle->current_board.current_player == chess::player::white) 
+                ? chess::player::black : chess::player::white;
 
-            // Return pointer to the MODIFIED internal board state
+            std::cerr << "[DEBUG PYTHON API]: Updated current_player to: " 
+                      << static_cast<int>(handle->current_board.current_player) << std::endl;
+
+            // Return pointer to the modified internal board state
             return &(handle->current_board);
 
-        } catch(const std::exception& e) {
+        } catch (const std::exception& e) {
             std::cerr << "[C API ERROR] Exception applying move: " << e.what() << std::endl;
-            return nullptr; // Return null on error
-        } catch(...) {
+            return nullptr;
+        } catch (...) {
             std::cerr << "[C API ERROR] Unknown error applying move." << std::endl;
-            return nullptr; // Return null on error
+            return nullptr;
         }
     }
 
