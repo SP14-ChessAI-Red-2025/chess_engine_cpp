@@ -30,12 +30,12 @@ if chess_dir_parent not in sys.path:
 # --- Import the Cython module ---
 try:
     # Import the Cython class and enums/wrappers
-    # The module path 'chess_dir.ai_chess' comes from setup.py Extension name
-    from chess_dir.ai_chess import (
+    # The module path 'chess_dir.ai_chess_cython' comes from setup.py Extension name
+    from chess_dir.ai_chess_cython import (
         ChessEngine, Player, PieceType, MoveType, GameStatus,
         BoardPosition, ChessMove # Assuming these wrappers are defined in Cython
     )
-    # print("DEBUG: Successfully imported from chess_dir.ai_chess")
+    # print("DEBUG: Successfully imported from chess_dir.ai_chess_cython")
 except ImportError as e:
     print(f"CRITICAL ERROR importing Cython module 'chess_dir.ai_chess': {e}")
     print("Ensure the Cython extension was compiled correctly using:")

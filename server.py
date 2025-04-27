@@ -20,7 +20,7 @@ if src_dir_path not in sys.path: sys.path.append(src_dir_path)
 
 try:
     # Make sure ai_chess.py has the updated methods returning POINTER(BoardState)
-    from chess_dir.ai_chess import ChessEngine, PieceType
+    from chess_dir.ai_chess_cython import ChessEngine, PieceType
 except ImportError as e:
     print(f"Error importing ChessEngine/Enums: {e}"); sys.exit(1)
 except AttributeError as e:
