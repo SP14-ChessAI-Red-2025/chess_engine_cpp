@@ -117,11 +117,16 @@ function App() {
   }, [isLoading, fetchValidMoves]);
 
   const fetchBoardEvaluation = useCallback(async () => {
-    if (!boardState) return; // Ensure board state exists before fetching evaluation
+    if (!boardState) {
+      console.log("fetchBoardEvaluation skipped: boardState is null.");
+      return;
+    }
     try {
+      console.log("Fetching board evaluation...");
       const response = await fetch(`${API_URL}/evaluate`);
       if (!response.ok) throw new Error(`Failed to fetch evaluation: ${response.status}`);
       const data = await response.json();
+      console.log("Fetched board evaluation:", data.evaluation);
       setBoardEvaluation(data.evaluation); // Update the evaluation score
     } catch (error) {
       console.error("Error fetching board evaluation:", error);
@@ -186,16 +191,19 @@ function App() {
   };
 
   const getCastlingRights = (state) => {
-    if (!state || !state.castling_rights) return "Unavailable";
-    const { white, black } = state.castling_rights;
+    if (!state || !state.can_castle) return "Unavailable";
+
+    // Assuming `can_castle` is an array of 4 booleans:
+    // [White Kingside, White Queenside, Black Kingside, Black Queenside]
+    const [whiteKingside, whiteQueenside, blackKingside, blackQueenside] = state.can_castle;
 
     const whiteRights = [];
-    if (white.kingside) whiteRights.push("O-O");
-    if (white.queenside) whiteRights.push("O-O-O");
+    if (whiteKingside) whiteRights.push("O-O");
+    if (whiteQueenside) whiteRights.push("O-O-O");
 
     const blackRights = [];
-    if (black.kingside) blackRights.push("O-O");
-    if (black.queenside) blackRights.push("O-O-O");
+    if (blackKingside) blackRights.push("O-O");
+    if (blackQueenside) blackRights.push("O-O-O");
 
     return `White: ${whiteRights.length > 0 ? whiteRights.join(", ") : "None"} | Black: ${blackRights.length > 0 ? blackRights.join(", ") : "None"}`;
   };
@@ -363,7 +371,10 @@ function App() {
   }, [boardState, gameMode, isLoading, triggerAiMove]);
 
   useEffect(() => {
-    fetchBoardEvaluation();
+    if (boardState) {
+      console.log("Board state changed, fetching evaluation...");
+      fetchBoardEvaluation();
+    }
   }, [boardState, fetchBoardEvaluation]);
 
   // --- Handle Square Click Logic ---
@@ -499,23 +510,23 @@ function App() {
           </button>
         </div>
 
-        {/* Game Info Sidebar */}
-        <div className="sidebar">
-          <h2>Game Info</h2>
-          <div className="game-info-section">
-            <strong>Castling Rights:</strong>
-            <p>{getCastlingRights(boardState)}</p>
-          </div>
-          <div className="game-info-section">
-            <strong>Board Evaluation:</strong>
-            <p>
-              {boardEvaluation !== null
-                ? `${boardEvaluation > 0 ? "White" : "Black"} is ahead (${boardEvaluation.toFixed(2)})`
-                : "Evaluating..."}
-            </p>
-          </div>
+        /* Game Info Sidebar */
+          <div className="sidebar">
+            <h2>Game Info</h2>
+            <div className="game-info-section">
+              <strong>Castling Rights:</strong>
+              <p>{getCastlingRights(boardState)}</p>
+            </div>
+            <div className="game-info-section">
+              <strong>Board Evaluation:</strong>
+              <p>
+                {typeof boardEvaluation === "number"
+            ? `${boardEvaluation.toFixed(2)}`
+            : "Evaluating..."}
+              </p>
+            </div>
 
-          {/* Move History Section */}
+            {/* Move History Section */}
           <div className="move-history-section">
             <h2>Move History</h2>
             <div className="move-history-container">

@@ -196,7 +196,7 @@ extern "C" {
         }
     }
 
-    // --- Cancellation (Unchanged) ---
+    // --- Cancellation ---
      DLLEXPORT void engine_cancel_search(void* engine_handle_opaque) noexcept {
         if (!engine_handle_opaque) return;
         EngineHandle* handle = static_cast<EngineHandle*>(engine_handle_opaque);
@@ -214,7 +214,7 @@ extern "C" {
 
         EngineHandle* handle = static_cast<EngineHandle*>(engine_handle_opaque);
 
-#ifdef ENABLE_NNUE // Check if NNUE is enabled
+#ifdef NNUE_ENABLED // Check if NNUE is enabled
         try {
             return handle->ai_state.evaluator_.evaluate(handle->current_board);
         } catch (const std::exception& e) {
