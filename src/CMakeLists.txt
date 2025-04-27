@@ -73,7 +73,7 @@ target_include_directories(chess_cpp PUBLIC
 # Add architecture-specific optimizations conditionally
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     message(STATUS "Applying BMI/POPCNT flags for GCC/Clang compiler.")
-    target_compile_options(chess_cpp PRIVATE -mbmi -mbmi2 -mpopcnt)
+    #   target_compile_options(chess_cpp PRIVATE -mbmi -mbmi2 -mpopcnt)
 endif()
 
 # Add platform-specific compile options/definitions
