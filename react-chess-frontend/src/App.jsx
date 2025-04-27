@@ -66,6 +66,7 @@ function App() {
         setValidMoves([]);
       } else {
         const movesData = await movesResponse.json();
+        if (!Array.isArray(movesData)) throw new Error("Invalid moves data from server.");
 
         // Filter out special-case moves like claim_draw or resign
         const filteredMoves = movesData.filter(
@@ -91,18 +92,6 @@ function App() {
       return null;
     }
 
-    // Check if the initial state is already saved in localStorage
-    const savedState = localStorage.getItem("initialGameState");
-    if (savedState) {
-      console.log(`Using saved initial state from localStorage (called by ${caller})...`);
-      const parsedState = JSON.parse(savedState);
-      updateBoardStateWithHistory(parsedState); // Set the saved initial state
-      setStatusMessage(getGameStatusMessage(parsedState));
-      setValidMoves([]); // Clear valid moves
-      await fetchValidMoves(parsedState); // Fetch valid moves for the saved state
-      return parsedState;
-    }
-
     console.log(`Fetching initial game state (called by ${caller})...`);
     setIsLoading(true);
     setStatusMessage("Fetching state...");
@@ -114,9 +103,6 @@ function App() {
       newState = await stateResponse.json();
       if (!newState || typeof newState !== "object") throw new Error("Received invalid state from server");
       console.log("Fetched Initial State:", newState);
-
-      // Save the initial state to localStorage
-      localStorage.setItem("initialGameState", JSON.stringify(newState));
 
       updateBoardStateWithHistory(newState); // Set initial state
       setStatusMessage(getGameStatusMessage(newState)); // Update status message
@@ -150,7 +136,7 @@ function App() {
       console.error("Error fetching board evaluation:", error);
       setBoardEvaluation(null); // Reset evaluation on error
     }
-  }, [boardState, fetchInitialGameState]);
+  }, [boardState]);
 
   const getTurnHistory = (history) => {
     const turns = [];
@@ -192,19 +178,20 @@ function App() {
         setMoveHistory((prevHistory) => [...prevHistory, newState.last_move.notation]);
       }
 
-      // Update the fifty-move counter
-      if (newState.last_move && (newState.last_move.piece === PieceType.PAWN || newState.last_move.is_capture)) {
-        setFiftyMoveCounter(0); // Reset counter on pawn move or capture
-      } else {
-        setFiftyMoveCounter((prevCounter) => prevCounter + 1); // Increment counter otherwise
-      }
+      setFiftyMoveCounter((prevCounter) => {
+        const newCounter = newState.last_move && (newState.last_move.piece === PieceType.PAWN || newState.last_move.is_capture)
+          ? 0
+          : prevCounter + 1;
 
-      // Check for fifty-move rule
-      if (fiftyMoveCounter + 1 >= 50) {
-        console.log("Fifty-move rule triggered. Declaring a draw.");
-        newState.status = GameStatus.DRAW;
-        setStatusMessage("Draw by Fifty-Move Rule");
-      }
+        // Check for fifty-move rule
+        if (newCounter >= 50) {
+          console.log("Fifty-move rule triggered. Declaring a draw.");
+          newState.status = GameStatus.DRAW;
+          setStatusMessage("Draw by Fifty-Move Rule");
+        }
+
+        return newCounter;
+      });
 
       return newState;
     });
@@ -367,7 +354,9 @@ function App() {
     newState.current_player = newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE;
     updateBoardStateWithHistory(newState);
     setStatusMessage(getGameStatusMessage(newState));
-    await fetchValidMoves(newState);
+    if (newState) {
+      await fetchValidMoves(newState);
+    }
   } catch (error) {
     console.error("Error during AI move:", error);
     setStatusMessage(`Error during AI turn: ${error.message}`);
@@ -463,7 +452,7 @@ function App() {
       } catch (error) {
         console.error("Error applying move:", error);
         setStatusMessage(`Error applying move: ${error.message}`);
-        fetchInitialGameState("handleSquareClick-error");
+        await fetchInitialGameState("handleSquareClick-error");
       } finally {
         setIsLoading(false);
       }
