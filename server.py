@@ -227,7 +227,9 @@ def trigger_ai_move():
         return jsonify({"error": "Chess engine not initialized"}), 500
 
     difficulty = 1
-    game_mode = None 
+    game_mode = None  # Default game mode
+    previous_player = None  # Variable to remember the player of the input state_dict
+
     if request.is_json and isinstance(request.json, dict):
         try:
             difficulty = int(request.json.get('difficulty', 5))
@@ -244,11 +246,16 @@ def trigger_ai_move():
             if current_state is None:
                 return jsonify({"error": "Failed to retrieve current state"}), 500
 
-            current_player = current_state.get('current_player')
-            if ai_player is not None and current_player != ai_player:
+            # Remember the current player of the input state_dict
+            previous_player = current_state.get('current_player')
+
+            if ai_player is not None and previous_player != ai_player:
                 app.logger.warning("AI attempted to move out of turn. Correcting current player.")
                 # Update the current player to the correct one
-                current_state['current_player'] = current_player
+                if previous_player == Player.BLACK:
+                    current_state['current_player'] = Player.WHITE
+                else:
+                    current_state['current_player'] = Player.BLACK
                 return jsonify(current_state), 200
 
             # Proceed with AI move
@@ -272,19 +279,19 @@ def trigger_ai_move():
             new_state_address = cast(new_state_ptr, c_void_p).value
             app.logger.debug(f"Attempting state_address_to_dict with address: {new_state_address}")
             new_state_dict = state_address_to_dict(new_state_address)
-            # WE TRY TO SWITCH THE PLAYER HERE
-            new_state_dict['current_player'] = (Player.BLACK if new_state_dict['current_player'] == Player.WHITE else Player.WHITE)
             if new_state_dict is None:
                 app.logger.error(f"state_address_to_dict failed for address {new_state_address}")
                 return jsonify({"error": "Failed to convert board state after AI move"}), 500
             app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
-            # If the game mode is "Player Black vs AI White," switch the player after the AI move
-            # THIS SHOULDNT BE NEEDED, BUT IT IS FOR NOW. 
-            # SOMEHOW THE AI IS MOVING PERSISTENTLY IN THIS MODE.
-            # AND IT DOESNT EVEN WORK...
-            #if game_mode == "PLAYER_VS_AI_WHITE":
-            #    new_state_dict['current_player'] = Player.BLACK
+            # Compare the new state's current player with the previous player
+            if new_state_dict['current_player'] == previous_player:
+                app.logger.info("New state's current player is the same as the previous player. Switching player.")
+                # Switch the player
+                if new_state_dict['current_player'] == Player.BLACK:
+                    new_state_dict['current_player'] = Player.WHITE
+                else:
+                    new_state_dict['current_player'] = Player.BLACK
 
         # Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
