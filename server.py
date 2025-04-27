@@ -185,15 +185,6 @@ def apply_move_api():
                  return jsonify({"error": "Failed to convert new board state"}), 500
             app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
-            # === CONDITIONAL WORKAROUND (Logic remains the same) ===
-            #if 'current_player' in new_state_dict:
-            #    player_read_from_state = new_state_dict['current_player']
-            #    if previous_player is not None and player_read_from_state == previous_player:
-            #        expected_next_player = 1 - previous_player
-            #        app.logger.warning(f"CONDITIONAL WORKAROUND: Player read ({player_read_from_state}) matches previous player ({previous_player}). Flipping to {expected_next_player}.")
-            #        new_state_dict['current_player'] = expected_next_player
-            # === END WORKAROUND ===
-
         # 5. Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
         status_final = new_state_dict.get('status', 'N/A')
@@ -209,7 +200,7 @@ def apply_move_api():
 
 
 @app.route('/api/ai_move', methods=['POST'])
-def trigger_ai_move(): # Conditional Workaround Applied
+def trigger_ai_move():
     """Triggers AI move, gets new state pointer from engine, returns corrected state dict."""
     if not engine: return jsonify({"error": "Chess engine not initialized"}), 500
 
@@ -218,26 +209,9 @@ def trigger_ai_move(): # Conditional Workaround Applied
         try: difficulty = int(request.json.get('difficulty', 5))
         except (ValueError, TypeError): difficulty = 5
 
-    previous_player = None # AI player who is about to move
     try:
         new_state_dict = None
         with engine_lock:
-             # --- Get current player BEFORE AI moves ---
-             try:
-                 addr = engine.board_state_address
-                 state_dict_before = state_address_to_dict(addr)
-                 if state_dict_before:
-                     previous_player = state_dict_before.get('current_player')
-                 else:
-                      app.logger.warning("Could not fetch state before AI move to determine previous player.")
-             except Exception as e_fetch:
-                  app.logger.warning(f"Error fetching state before AI move: {e_fetch}")
-             # --- End Fetch ---
-             if previous_player is None:
-                  app.logger.error("FATAL: Could not determine which player's turn it is for AI move.")
-                  return jsonify({"error": "Cannot determine AI player turn"}), 500
-
-             app.logger.info(f"Calculating AI move for player {previous_player} (difficulty={difficulty})...")
              start_time = time.time()
 
              # === Call engine.ai_move wrapper, get POINTER back ===
@@ -265,19 +239,6 @@ def trigger_ai_move(): # Conditional Workaround Applied
                  return jsonify({"error": "Failed to convert board state after AI move"}), 500
              app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
-             # === CONDITIONAL WORKAROUND ===
-             #if 'current_player' in new_state_dict:
-             #    player_read_from_state = new_state_dict['current_player']
-                 # Only flip if the player read matches the player *who just moved* (the AI)
-             #    if player_read_from_state == previous_player:
-             #        expected_next_player = 1 - previous_player
-             #        app.logger.warning(f"CONDITIONAL WORKAROUND (AI): Player read ({player_read_from_state}) matches previous player ({previous_player}). Flipping to {expected_next_player}.")
-             #        new_state_dict['current_player'] = expected_next_player
-             #    else:
-             #         app.logger.info(f"Conditional workaround (AI) NOT needed: Player read ({player_read_from_state}) is already different from previous player ({previous_player}).")
-             #else:
-             #     app.logger.error("Cannot apply conditional workaround (AI): 'current_player' key missing.")
-             # === END WORKAROUND ===
 
         # Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
