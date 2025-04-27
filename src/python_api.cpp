@@ -142,7 +142,7 @@ extern "C" {
 
     // --- Apply Move ---
     DLLEXPORT chess::board_state* engine_apply_move(void* engine_handle_opaque,
-                                                    const chess::chess_move* move) noexcept { // Removed out_board_state*, returns pointer
+                                                    const chess::chess_move* move) noexcept {
         if (!engine_handle_opaque || !move) {
              std::cerr << "[C API ERROR] engine_apply_move called with null handle or move." << std::endl;
              return nullptr; // Return null on error

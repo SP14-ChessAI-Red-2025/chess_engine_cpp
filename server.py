@@ -8,7 +8,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from ctypes import (
     Structure, POINTER, c_void_p, c_size_t, c_int8, c_uint8, c_int32,
-    c_bool, cast, sizeof, pointer, addressof
+    c_bool, cast, sizeof
 )
 
 # --- Path Setup ---
@@ -20,7 +20,7 @@ if src_dir_path not in sys.path: sys.path.append(src_dir_path)
 
 try:
     # Make sure ai_chess.py has the updated methods returning POINTER(BoardState)
-    from chess_dir.ai_chess import ChessEngine, Player, PieceType, GameStatus, MoveType
+    from chess_dir.ai_chess import ChessEngine, PieceType
 except ImportError as e:
     print(f"Error importing ChessEngine/Enums: {e}"); sys.exit(1)
 except AttributeError as e:
