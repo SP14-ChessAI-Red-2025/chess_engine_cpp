@@ -71,19 +71,36 @@ def moves_to_list_ctypes(move_buffer_address, num_moves):
             current_move = move_ptr[i]; current_move_addr = move_buffer_address + i * sizeof(CtypesChessMove)
             san = engine.move_to_str(current_move_addr) if engine else "ERR!" # Assuming move_to_str exists
             move_dict = {"type":current_move.type,"start":{"rank":current_move.start_position.rank,"file":current_move.start_position.file},"target":{"rank":current_move.target_position.rank,"file":current_move.target_position.file},"promotion":current_move.promotion_target,"san":san}; move_list.append(move_dict)
-    except Exception as e: app.logger.error(f"Error processing ctypes move buffer: {e}", exc_info=True); return []
+    except Exception as e:
+        app.logger.error(f"Error processing ctypes move buffer: {e}", exc_info=True)
+        return []
     return move_list
 
 def state_address_to_dict(address):
     if address == 0: app.logger.error("state_address_to_dict received NULL address."); return None
     try:
         state_ptr = cast(address, POINTER(CtypesBoardState));
-        if not state_ptr: app.logger.error("state_address_to_dict: cast NULL ptr."); return None
-        c_state = state_ptr.contents; py_state = {}; py_pieces = []
-        for r in range(8): py_pieces.append([{'type':c_state.pieces[r][f].type, 'player':c_state.pieces[r][f].piece_player} for f in range(8)])
-        py_state['pieces'] = py_pieces; py_state['current_player'] = c_state.current_player; py_state['can_castle'] = list(c_state.can_castle); py_state['in_check'] = list(c_state.in_check); py_state['en_passant_valid'] = list(c_state.en_passant_valid); py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn; py_state['status'] = c_state.status; py_state['can_claim_draw'] = c_state.can_claim_draw
+        if not state_ptr: 
+            app.logger.error("state_address_to_dict: cast NULL ptr.")
+            return None
+        c_state = state_ptr.contents; 
+        py_state = {}; 
+        py_pieces = []
+        for r in range(8): 
+            py_pieces.append([{'type':c_state.pieces[r][f].type, 'player':c_state.pieces[r][f].piece_player} for f in range(8)])
+        py_state['pieces'] = py_pieces; 
+        py_state['current_player'] = c_state.current_player
+        py_state['can_castle'] = list(c_state.can_castle)
+        py_state['in_check'] = list(c_state.in_check)
+        py_state['en_passant_valid'] = list(c_state.en_passant_valid)
+        py_state['turns_since_last_capture_or_pawn'] = c_state.turns_since_last_capture_or_pawn
+        py_state['status'] = c_state.status
+        py_state['can_claim_draw'] = c_state.can_claim_draw
+        app.logger.debug(f"DEBUG: Converting state. current_player={c_state.current_player}")
         return py_state
-    except Exception as e: app.logger.error(f"Error converting C state addr {address}: {e}", exc_info=True); return None
+    except Exception as e: 
+        app.logger.error(f"Error converting C state addr {address}: {e}", exc_info=True)
+        return None
 
 # --- API Endpoints ---
 @app.route('/api/state', methods=['GET'])
@@ -114,16 +131,21 @@ def get_valid_moves_api():
             address, count = engine.get_valid_moves_address_count()
             valid_moves_list = moves_to_list_ctypes(address, count) # Needs lock for move_to_str
         return jsonify(valid_moves_list)
-    except Exception as e: app.logger.error(f"/api/moves error: {e}", exc_info=True); return jsonify({"error": "Failed moves"}), 500
+    except Exception as e: 
+        app.logger.error(f"/api/moves error: {e}", exc_info=True)
+        return jsonify({"error": "Failed moves"}), 500
 
 
 @app.route('/api/apply_move', methods=['POST'])
 def apply_move_api():
     """ Applies player move, gets new state pointer from engine, returns corrected state dict. """
-    if not engine: return jsonify({"error": "Chess engine not initialized"}), 500
-    if not request.is_json: return jsonify({"error": "Request must be JSON"}), 400
-    data = request.json;
-    if not isinstance(data, dict): return jsonify({"error": "Invalid JSON format"}), 400
+    if not engine: 
+        return jsonify({"error": "Chess engine not initialized"}), 500
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 400
+    data = request.json
+    if not isinstance(data, dict): 
+        return jsonify({"error": "Invalid JSON format"}), 400
 
     try: # Extract and validate move data from JSON
         start_rank = int(data['start']['rank']); start_file = int(data['start']['file'])
