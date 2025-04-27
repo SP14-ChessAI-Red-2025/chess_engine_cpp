@@ -201,16 +201,6 @@ function App() {
   };
 
   // --- Reset Game ---
-  const returnToModeSelect = useCallback(() => {
-    setGameMode(GameMode.SELECT);
-    setBoardState(null);
-    setValidMoves([]);
-    setSelectedSquare(null);
-    setPlayerColor(null);
-    setFiftyMoveCounter(0); // Reset fifty-move counter
-    setStatusMessage("Select Game Mode");
-  }, []);
-
   const handleResetGame = useCallback(async () => {
     setIsLoading(true);
     setStatusMessage("Resetting board...");
@@ -220,7 +210,7 @@ function App() {
       if (!newState) throw new Error("Failed to fetch initial game state.");
 
       // Reset the board state while keeping the current game mode
-      setBoardState(newState); // Use the initial state fetched from the backend
+      updateBoardStateWithHistory(newState);
       setValidMoves([]);
       setSelectedSquare(null);
       setFiftyMoveCounter(0); // Reset fifty-move counter
@@ -228,6 +218,30 @@ function App() {
     } catch (error) {
       console.error("Error resetting board:", error);
       setStatusMessage(`Error resetting board: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchInitialGameState]);
+
+  const returnToModeSelect = useCallback(async () => {
+    setIsLoading(true);
+    setStatusMessage("Returning to mode selection...");
+    try {
+      console.log("Fetching initial game state for mode selection...");
+      const newState = await fetchInitialGameState("returnToModeSelect");
+      if (!newState) throw new Error("Failed to fetch initial game state.");
+
+      // Reset the board state while switching to mode selection
+      updateBoardStateWithHistory(newState);
+      setValidMoves([]);
+      setSelectedSquare(null);
+      setFiftyMoveCounter(0); // Reset fifty-move counter
+      setPlayerColor(null); // Reset player color
+      setGameMode(GameMode.SELECT); // Switch to mode selection
+      setStatusMessage("Select Game Mode");
+    } catch (error) {
+      console.error("Error returning to mode selection:", error);
+      setStatusMessage(`Error returning to mode selection: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -500,21 +514,19 @@ function App() {
                 : "Evaluating..."}
             </p>
           </div>
-        </div>
 
-        {/* Move History Sidebar */}
-        <div className="move-history-sidebar">
-          <h2>Move History</h2>
-          <div className="move-history-container">
-            {getTurnHistory(moveHistory).map((turn, index) => (
-              <div key={index} className="turn">
-                <strong>Turn {index + 1}:</strong>
-                <p>
-                  White: {turn.white || "—"} <br />
-                  Black: {turn.black || "—"}
-                </p>
-              </div>
-            ))}
+          {/* Move History Section */}
+          <div className="move-history-section">
+            <h2>Move History</h2>
+            <div className="move-history-container">
+              {getTurnHistory(moveHistory).map((turn, index) => (
+                <div key={index} className="turn">
+                  <strong>{index + 1}.</strong> {/* Turn number */}
+                  <span>{turn.white || "—"}</span> {/* White's move */}
+                  <span>{turn.black || "—"}</span> {/* Black's move */}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

@@ -314,8 +314,7 @@ def evaluate_board():
     global engine
     with engine_lock:
         try:
-            # Evaluate the current board state
-            evaluation = engine.evaluate_board()
+            evaluation = engine.evaluate_board()  # Call the Python wrapper method
             return jsonify({"evaluation": evaluation}), 200
         except Exception as e:
             app.logger.error(f"Error evaluating board: {e}", exc_info=True)

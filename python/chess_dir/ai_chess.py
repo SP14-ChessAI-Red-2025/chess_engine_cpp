@@ -293,19 +293,19 @@ class ChessEngine:
 
 
     def evaluate_board(self) -> float:
-        """ Gets the static evaluation of the current board state (if available in API). """
-        if not self._lib: raise RuntimeError("Library not loaded.")
-        if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
+        """Gets the static evaluation of the current board state."""
+        if not self._lib:
+            raise RuntimeError("Library not loaded.")
+        if not self._engine_handle:
+            raise RuntimeError("Engine handle not initialized.")
 
         # Check if the evaluate function exists in the loaded library
         if hasattr(self._lib, 'engine_evaluate_board'):
-            # Define argtypes if not done globally (safer here)
             self._lib.engine_evaluate_board.argtypes = [c_void_p]
             self._lib.engine_evaluate_board.restype = c_double
             return self._lib.engine_evaluate_board(self._engine_handle)
         else:
-            print("Warning: engine_evaluate_board function not found in C API.")
-            return 0.0 # Return neutral score
+            raise AttributeError("engine_evaluate_board function not found in C API.")
 
     def cancel_search(self):
         """ Signals the C++ engine to stop the current search using the EngineHandle API. """

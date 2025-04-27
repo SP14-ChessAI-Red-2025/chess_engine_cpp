@@ -194,7 +194,7 @@
 }
 
 /* Move History Sidebar */
-.move-history-sidebar {
+.sidebar {
   flex: 1;
   margin-left: 20px;
   padding: 15px;
@@ -202,11 +202,27 @@
   color: white;
   border-radius: 8px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  max-height: 400px; /* Adjust as needed */
-  overflow-y: auto; /* Make it scrollable */
+  max-height: 100%; /* Ensure it doesn't overflow */
+  overflow-y: auto; /* Make the sidebar scrollable if needed */
 }
 
-.move-history-sidebar h2 {
+/* Game Info Section */
+.game-info-section {
+  margin-bottom: 20px;
+}
+
+.game-info-section strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 1.1em;
+}
+
+/* Move History Section */
+.move-history-section {
+  margin-top: 20px;
+}
+
+.move-history-section h2 {
   margin-bottom: 10px;
   font-size: 1.5em;
   text-align: center;
@@ -216,6 +232,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 200px; /* Limit height for scrolling */
+  overflow-y: auto; /* Make it scrollable */
 }
 
 .turn {

@@ -205,4 +205,29 @@ extern "C" {
         } catch (...) { /* ... error handling ... */ }
      }
 
+    // --- Evaluate Board ---
+    DLLEXPORT double engine_evaluate_board(void* engine_handle_opaque) noexcept {
+        if (!engine_handle_opaque) {
+            std::cerr << "[C API ERROR] engine_evaluate_board called with null handle." << std::endl;
+            return 0.0; // Return a default value on error
+        }
+
+        EngineHandle* handle = static_cast<EngineHandle*>(engine_handle_opaque);
+
+#ifdef ENABLE_NNUE // Check if NNUE is enabled
+        try {
+            return handle->ai_state.evaluator_.evaluate(handle->current_board);
+        } catch (const std::exception& e) {
+            std::cerr << "[C API ERROR] Exception during evaluate_board: " << e.what() << std::endl;
+            return 0.0; // Return a default value on error
+        } catch (...) {
+            std::cerr << "[C API ERROR] Unknown exception during evaluate_board." << std::endl;
+            return 0.0; // Return a default value on error
+        }
+#else
+        std::cerr << "[C API WARNING] NNUE evaluation is disabled in this build." << std::endl;
+        return 0.0; // Return a default value if NNUE is disabled
+#endif
+    }
+
 } // extern "C"
