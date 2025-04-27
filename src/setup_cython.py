@@ -15,6 +15,7 @@ CPP_BUILD_DIR = os.path.join(PROJECT_ROOT, 'build', 'src')
 CPP_LIB_NAME = 'chess_cpp'
 CYTHON_SOURCE_FILE = os.path.join(SETUP_DIR, "chess_engine_cython.pyx")
 
+# *** CORRECTED OUTPUT PATH ***
 # Point to the 'python/chess_dir' relative to the project root
 OUTPUT_PACKAGE_DIR = os.path.join(PROJECT_ROOT, "python", "chess_dir")
 
@@ -52,7 +53,7 @@ if not os.path.exists(cpp_library_path):
 # Define the Cython extension module(s)
 extensions = [
     Extension(
-        "chess_dir.ai_chess_cython",
+        "chess_dir.ai_chess", # Module name remains the same
         [CYTHON_SOURCE_FILE],
         include_dirs=[CPP_INCLUDE_DIR, numpy.get_include()],
         language="c++",
