@@ -39,6 +39,8 @@ namespace chess {
         board_position start_position{};
         board_position target_position{};
         piece_type promotion_target = piece_type::none;
+
+        bool operator==(const chess_move&) const = default;
     };
     struct board_state { /* ... as before ... */
         piece pieces[8][8]{};
