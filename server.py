@@ -256,7 +256,9 @@ def trigger_ai_move():
                  return jsonify({"error": "Failed to convert board state after AI move"}), 500
              app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
-        new_state_dict['current_player'] = (Player.BLACK if new_state_dict['current_player'] == Player.WHITE else Player.WHITE)
+        # DONT UPDATE HERE THE BACKEND CODE DOES IT ON THE AI.
+        # CONVERSELY, PLAYER MOVES MUST BE SWAPPED ON THE SERVER SIDE.
+        # new_state_dict['current_player'] = (Player.BLACK if new_state_dict['current_player'] == Player.WHITE else Player.WHITE)
 
         # Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
