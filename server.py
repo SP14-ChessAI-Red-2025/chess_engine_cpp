@@ -129,45 +129,36 @@ def get_valid_moves_api():
 
 @app.route('/api/apply_move', methods=['POST'])
 def apply_move_api():
-    """Applies player move, gets new state pointer from engine, returns corrected state dict."""
+    """ Applies player move, gets new state pointer from engine, returns corrected state dict. """
     if not engine: 
         return jsonify({"error": "Chess engine not initialized"}), 500
     if not request.is_json: 
         return jsonify({"error": "Request must be JSON"}), 400
-    data = request.json
+    data = request.json;
     if not isinstance(data, dict): 
         return jsonify({"error": "Invalid JSON format"}), 400
 
-    try:  # Extract and validate move data from JSON
-        start_rank = int(data['start']['rank'])
-        start_file = int(data['start']['file'])
-        target_rank = int(data['target']['rank'])
-        target_file = int(data['target']['file'])
+    try: # Extract and validate move data from JSON
+        start_rank = int(data['start']['rank']); start_file = int(data['start']['file'])
+        target_rank = int(data['target']['rank']); target_file = int(data['target']['file'])
         promotion_data = data.get('promotion', PieceType.NONE)
         promotion_piece = int(promotion_data) if promotion_data is not None else PieceType.NONE
         if not (0 <= start_rank < 8 and 0 <= start_file < 8 and
                 0 <= target_rank < 8 and 0 <= target_file < 8 and
-                0 <= promotion_piece <= 6):
-            raise ValueError("Invalid move data")
+                0 <= promotion_piece <= 6): raise ValueError("Invalid move data")
     except (KeyError, TypeError, ValueError) as e:
         return jsonify({"error": f"Invalid move data: {e}"}), 400
 
     try:
         new_state_dict = None
         with engine_lock:
-            # Get the current state and remember the previous player
-            current_address = engine.board_state_address
-            current_state = state_address_to_dict(current_address)
-            if current_state is None:
-                return jsonify({"error": "Failed to retrieve current state"}), 500
-            previous_player = current_state.get('current_player')
-
-            # Find the matching C move address
+            # 1. Get current valid moves buffer address
             moves_buffer_address, num_moves = engine.get_valid_moves_address_count()
             if moves_buffer_address == 0 or num_moves == 0:
-                return jsonify({"error": "No valid moves available"}), 400
+                 return jsonify({"error": "No valid moves available"}), 400
 
-            move_address_to_apply = 0  # This will be the integer address
+            # 2. Find the matching C move ADDRESS
+            move_address_to_apply = 0 # This will be the integer address
             move_ptr = cast(moves_buffer_address, POINTER(CtypesChessMove))
             for i in range(num_moves):
                 c_move = move_ptr[i]
@@ -176,42 +167,49 @@ def apply_move_api():
                     c_move.target_position.rank == target_rank and
                     c_move.target_position.file == target_file and
                     c_move.promotion_target == promotion_piece):
+                    # Calculate the address for the matching move
                     move_address_to_apply = moves_buffer_address + i * sizeof(CtypesChessMove)
                     break
 
             if move_address_to_apply == 0:
                 return jsonify({"error": "Move address not found in valid moves"}), 400
 
-            # Apply the move
+            # 3. Call engine.apply_move (from Cython) with the INTEGER ADDRESS
+            app.logger.debug(f"Calling engine.apply_move with address: {move_address_to_apply}")
+            # Pass the integer address directly
+            app.logger.debug(f"Before apply_move: {state_address_to_dict(engine.board_state_address)}")
             new_state_address_int = engine.apply_move(move_address_to_apply)
+            app.logger.debug(f"After apply_move: {state_address_to_dict(new_state_address_int)}")
+
+            # Note: The Cython apply_move returns ptrdiff_t which is the address.
+            # We rename the variable for clarity.
             if new_state_address_int == 0:
                 app.logger.error("engine.apply_move (Cython) returned NULL address (0).")
                 return jsonify({"error": "Engine failed to apply the move"}), 500
+            app.logger.debug(f"engine.apply_move returned address: {new_state_address_int}")
 
-            # Convert the new state to a dictionary
-            new_state_dict = state_address_to_dict(new_state_address_int)
+
+            # 4. Convert the C++ state at the returned address to dict
+            app.logger.debug(f"Attempting state_address_to_dict with address: {new_state_address_int}")
+            new_state_dict = state_address_to_dict(new_state_address_int) # Pass the integer address
+
             if new_state_dict is None:
-                app.logger.error(f"state_address_to_dict failed for address {new_state_address_int}")
-                return jsonify({"error": "Failed to convert new board state"}), 500
+                 app.logger.error(f"state_address_to_dict failed for address {new_state_address_int}")
+                 return jsonify({"error": "Failed to convert new board state"}), 500
+            app.logger.debug(f"state_address_to_dict returned player: {new_state_dict.get('current_player')}")
 
-            # Check if the previous player is the same as the current player
-            if new_state_dict['current_player'] == previous_player:
-                app.logger.info("New state's current player is the same as the previous player. Switching player.")
-                # Switch the player
-                if new_state_dict['current_player'] == Player.BLACK:
-                    new_state_dict['current_player'] = Player.WHITE
-                else:
-                    new_state_dict['current_player'] = Player.BLACK
 
-        # Return the potentially modified dictionary
+        new_state_dict['current_player'] = (Player.BLACK if new_state_dict['current_player'] == Player.WHITE else Player.WHITE)
+
+        # 5. Return the potentially modified dictionary
         current_p_final = new_state_dict.get('current_player', 'N/A')
         status_final = new_state_dict.get('status', 'N/A')
         app.logger.info(f"Move applied. Returning state. Player: {current_p_final}, Status: {status_final}")
         return jsonify(new_state_dict), 200
 
-    except ValueError as e:  # Catch specific errors
-        app.logger.error(f"ValueError during apply_move: {e}", exc_info=True)
-        return jsonify({"error": f"Engine error: {e}"}), 500
+    except ValueError as e: # Catch specific errors
+         app.logger.error(f"ValueError during apply_move: {e}", exc_info=True)
+         return jsonify({"error": f"Engine error: {e}"}), 500
     except Exception as e:
         app.logger.error(f"Error in /api/apply_move: {e}", exc_info=True)
         return jsonify({"error": "Server error applying move"}), 500
