@@ -5,6 +5,7 @@
 #include <limits>
 #include <algorithm>
 #include <optional>
+#include <stdexcept>
 #include <cassert>
 
 namespace chess::ai {
