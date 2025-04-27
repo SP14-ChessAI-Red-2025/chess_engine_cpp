@@ -459,7 +459,7 @@ function App() {
 
         const newState = await response.json();
         console.log("Received new state directly from POST /api/apply_move:", newState);
-        //newState.current_player = newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE;
+        newState.current_player = newState.current_player === Player.WHITE ? Player.BLACK : Player.WHITE;
         updateBoardStateWithHistory(newState);
         setStatusMessage(getGameStatusMessage(newState));
         await fetchValidMoves(newState);
