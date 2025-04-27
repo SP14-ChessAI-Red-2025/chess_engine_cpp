@@ -181,7 +181,9 @@ def apply_move_api(): # Conditional Workaround Applied
             # 3. Call engine.apply_move (from Cython) with the INTEGER ADDRESS
             app.logger.debug(f"Calling engine.apply_move with address: {move_address_to_apply}")
             # Pass the integer address directly
-            new_state_address_int = engine.apply_move(move_address_to_apply) # Returns ptrdiff_t (integer)
+            app.logger.debug(f"Before apply_move: {state_address_to_dict(engine.board_state_address)}")
+            new_state_address_int = engine.apply_move(move_address_to_apply)
+            app.logger.debug(f"After apply_move: {state_address_to_dict(new_state_address_int)}")
 
             # Note: The Cython apply_move returns ptrdiff_t which is the address.
             # We rename the variable for clarity.

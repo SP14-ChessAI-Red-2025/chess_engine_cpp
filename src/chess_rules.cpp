@@ -127,9 +127,9 @@ namespace chess {
             board.turns_since_last_capture_or_pawn++;
         }
         // Switch player
-        // std::cerr << "DEBUG C++ Rules: current_player: " << static_cast<int>(board.current_player) << std::endl;
+        std::cerr << "DEBUG C++ Rules: current_player: " << static_cast<int>(board.current_player) << std::endl;
         board.current_player = (board.current_player == player::white) ? player::black : player::white;
-        // std::cerr << "DEBUG C++ Rules: current_player: " << static_cast<int>(board.current_player) << std::endl;
+        std::cerr << "DEBUG C++ Rules: current_player: " << static_cast<int>(board.current_player) << std::endl;
         // Update check status for both players
         board.in_check[static_cast<int>(player::white)] = is_player_in_check(board, player::white);
         board.in_check[static_cast<int>(player::black)] = is_player_in_check(board, player::black);
