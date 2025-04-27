@@ -1,5 +1,5 @@
 // src/App.jsx (FIXED State Handling)
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Board from './Board';
 import GameModeSelector from './GameModeSelector';
 import './App.css';
@@ -84,10 +84,21 @@ function App() {
 
   // --- Fetch Initial Game State (Only fetches state, moves fetched separately) ---
   const fetchInitialGameState = useCallback(async (caller = "unknown") => {
+    const initialStateRef = useRef(null); // Store the initial state
+
     if (isLoading) {
       console.log(`fetchInitialGameState skipped by ${caller}: isLoading=true`);
       return null;
     }
+
+    if (initialStateRef.current) {
+      console.log(`Using saved initial state (called by ${caller})...`);
+      updateBoardStateWithHistory(initialStateRef.current); // Set the saved initial state
+      setStatusMessage(getGameStatusMessage(initialStateRef.current));
+      setValidMoves([]); // Clear valid moves
+      return initialStateRef.current;
+    }
+
     console.log(`Fetching initial game state (called by ${caller})...`);
     setIsLoading(true);
     setStatusMessage("Fetching state...");
@@ -97,9 +108,10 @@ function App() {
       const stateResponse = await fetch(`${API_URL}/state`);
       if (!stateResponse.ok) throw new Error(`State fetch failed: ${stateResponse.status}`);
       newState = await stateResponse.json();
-      if (!newState || typeof newState !== 'object') throw new Error("Received invalid state from server");
+      if (!newState || typeof newState !== "object") throw new Error("Received invalid state from server");
       console.log("Fetched Initial State:", newState);
 
+      initialStateRef.current = newState; // Save the initial state
       updateBoardStateWithHistory(newState); // Set initial state
       setStatusMessage(getGameStatusMessage(newState)); // Update status message
 
@@ -218,6 +230,7 @@ function App() {
       if (!newState) throw new Error("Failed to fetch initial game state.");
 
       // Reset the board state while keeping the current game mode
+      setBoardStateHistory(new Map()); // Clear the board state history
       updateBoardStateWithHistory(newState);
       setValidMoves([]);
       setSelectedSquare(null);
@@ -510,7 +523,7 @@ function App() {
           </button>
         </div>
 
-        /* Game Info Sidebar */
+        {/* Game Info Sidebar */}
           <div className="sidebar">
             <h2>Game Info</h2>
             <div className="game-info-section">
