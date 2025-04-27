@@ -178,3 +178,46 @@ TEST(ChessRules, FiftyMoveRule) {
     ASSERT_EQ(board_state.status, chess::game_status::draw);
 }
 
+// Test the threefold and fivefold repetition rules
+TEST(ChessRules, ThreefoldRepetitionRule) {
+    std::size_t indices[] = {
+        4, 0,
+        0, 15,
+    };
+
+    auto board_state = chess::board_state::initial_board_state();
+    chess::previous_board_states history = {};
+
+    apply_moves(indices, board_state, history);
+
+    // Moves rooks forward and backward, ending up with the same positions
+    std::size_t rook_moves1[] = {
+        3, 1,
+        0
+    };
+    std::size_t rook_moves2[] = {
+        15
+    };
+
+    apply_moves(rook_moves1, board_state, history);
+    apply_moves(rook_moves2, board_state, history);
+    apply_moves(rook_moves1, board_state, history);
+
+    // We should be one turn shy of triggering the threefold repetition rule
+    ASSERT_FALSE(board_state.can_claim_draw);
+
+    apply_moves(rook_moves2, board_state, history);
+
+    ASSERT_TRUE(board_state.can_claim_draw);
+
+    apply_moves(rook_moves1, board_state, history);
+    apply_moves(rook_moves2, board_state, history);
+    apply_moves(rook_moves1, board_state, history);
+
+    // We should be one turn shy of triggering the fivefold repetition rule
+    ASSERT_NE(board_state.status, chess::game_status::draw);
+
+    apply_moves(rook_moves2, board_state, history);
+
+    ASSERT_EQ(board_state.status, chess::game_status::draw_by_repetition);
+}
