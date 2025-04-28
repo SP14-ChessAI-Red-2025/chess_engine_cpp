@@ -574,20 +574,6 @@ function App() {
                   : "Evaluating..."}
               </p>
             </div>
-
-            {/* Move History Section */}
-            <div className="move-history-section">
-              <h2>Move History</h2>
-              <div className="move-history-container">
-                {getTurnHistory(moveHistory).map((turn, index) => (
-                  <div key={index} className="turn">
-                    <strong>{index + 1}.</strong> {/* Turn number */}
-                    <span>{turn.white || "—"}</span> {/* White's move */}
-                    <span>{turn.black || "—"}</span> {/* Black's move */}
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
       )}
