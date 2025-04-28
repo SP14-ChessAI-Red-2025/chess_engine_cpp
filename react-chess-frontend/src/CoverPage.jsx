@@ -33,6 +33,10 @@ const CoverPage = ({ onProceed }) => {
       <div className="course-info">
         <p>Course: CS4850</p>
         <p>Semester: Spring 2025</p>
+        <p className="project-summary">
+        This project is a chess AI engine designed to provide an intelligent and interactive chess-playing experience. 
+        It uses advanced algorithms, including Minimax with Alpha-Beta pruning, and a neural network (NNUE) for board evaluation. 
+        </p>
       </div>
 
       <div className="links-section">
