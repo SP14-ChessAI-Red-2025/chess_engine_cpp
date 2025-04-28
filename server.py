@@ -237,10 +237,10 @@ def trigger_ai_move():
 
     if request.is_json and isinstance(request.json, dict):
         try:
-            difficulty = int(request.json.get('difficulty', 5))
+            difficulty = int(request.json.get('difficulty', 2))
             game_mode = request.json.get('game_mode', None)  # Retrieve game mode from the request
         except (ValueError, TypeError):
-            difficulty = 5
+            difficulty = 2
 
     try:
         new_state_dict = None
