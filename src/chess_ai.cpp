@@ -17,6 +17,8 @@ namespace chess::ai {
 
 struct game_tree;
 
+using score_t = double;
+
 struct chess_ai_state::thread_pool_t {
     struct worker {
         std::thread thread;
@@ -24,34 +26,39 @@ struct chess_ai_state::thread_pool_t {
         std::condition_variable cond;
         std::condition_variable cond2;
 
-        int data_in = 0;
-        int data_out = 0;
+        game_tree* data_in = nullptr;
+        score_t data_out = 0;
+        bool has_result = false;
+
+        bool should_exit = false;
+
+        static score_t do_work(game_tree* game_tree);
 
         worker() {
-            thread = std::thread{[&mutex = mutex](int& data_in, int& data_out, std::condition_variable& cond, std::condition_variable& cond2) {
+            thread = std::thread{[&mutex = mutex, &should_exit = should_exit, this](game_tree*& data_in, score_t& data_out, std::condition_variable& cond, std::condition_variable& cond2) {
                 while(true) {
                     // std::cout << "Worker iter" << std::endl;
                     std::unique_lock lock{mutex};
                     // std::cout << "Worker: got lock" << std::endl;
 
-                    cond.wait(lock, [&data_in] { return data_in != 0; });
+                    cond.wait(lock, [&data_in, &should_exit = should_exit] { return data_in != nullptr || should_exit; });
 
                     // std::cout << "Worker: done waiting" << std::endl;
 
-                    // if(data_in == 0) {
-                    //     std::cout << std::format("Exiting worker thread") << std::endl;
-                    //     break;
-                    // }
+                    if(should_exit) {
+                        std::cout << std::format("Exiting worker thread") << std::endl;
+                        break;
+                    }
 
-                    std::cout << std::format("Worker: got data, i is {}", data_in) << std::endl;
+                    std::cout << std::format("Worker: got data") << std::endl;
 
-                    data_out = data_in * 2;
+                    data_out = do_work(data_in);
+                    has_result = true;
 
                     std::cout << std::format("Worker: wrote {}", data_out) << std::endl;
 
-                    // lock.unlock();
-
-                    data_in = 0;
+                    // Reset data_in
+                    data_in = nullptr;
 
                     cond2.notify_one();
 
@@ -62,15 +69,16 @@ struct chess_ai_state::thread_pool_t {
 
         ~worker() {
             if(thread.joinable()) {
+                should_exit = true;
                 cond.notify_one();
 
-                thread.join();
                 std::cout << "Joining" << std::endl;
+                thread.join();
             }
         }
     };
 
-    worker workers[2] = {};
+    worker workers[4] = {};
 };
 
 chess_ai_state::chess_ai_state(const char* model_path)
@@ -84,8 +92,6 @@ chess_ai_state::chess_ai_state(const char* model_path)
 chess_ai_state::~chess_ai_state() {
     delete thread_pool;
 }
-
-using score_t = double;
 
 // Whether the AI should consider the move
 // The AI currently ignores resignations and claiming draws
@@ -151,13 +157,15 @@ struct game_tree {
 
     std::optional<chess_move> move = {}; // The move that resulted in the current_state
 
+    std::int32_t start_depth = 0;
+
     std::vector<game_tree> get_children() {
         std::vector<game_tree> children = {};
 
         for(auto& move : get_valid_moves(current_state) | std::views::filter(should_consider_move)) {
             auto board = apply_move(current_state, move);
 
-            children.emplace_back(ai_state, board, player, move);
+            children.emplace_back(ai_state, board, player, move, start_depth);
         }
 
         return children;
@@ -206,20 +214,55 @@ struct game_tree {
         }
     }
 
-    board_state get_best_move(std::size_t depth) {
+    board_state get_best_move(std::size_t depth, chess_ai_state& ai_state) {
         assert(depth != 0);
-
-        score_t alpha = std::numeric_limits<decltype(alpha)>::min();
-        score_t beta = std::numeric_limits<decltype(beta)>::max();
 
         auto children = get_children();
 
         std::vector<std::pair<game_tree*, score_t>> children_with_scores;
         children_with_scores.reserve(children.size());
 
-        std::ranges::transform(children, std::back_inserter(children_with_scores), [=](game_tree& child) {
-            return std::make_pair(&child, child.minimax(depth - 1, false, alpha, beta));
-        });
+        // std::ranges::transform(children, std::back_inserter(children_with_scores), [=](game_tree& child) {
+        //     return std::make_pair(&child, child.minimax(depth - 1, false, alpha, beta));
+        // });
+
+        std::size_t child_idx = 0;
+
+        while(child_idx < children.size()) {
+            for(std::size_t i = 0; i < std::size(ai_state.thread_pool->workers); i++) {
+                if(child_idx < children.size()) {
+                    auto& child = children[child_idx];
+
+                    auto& worker = ai_state.thread_pool->workers[i];
+
+                    {
+                        std::unique_lock lock{worker.mutex};
+
+                        worker.data_in = &child;
+
+                        worker.cond.notify_one();
+
+                        std::cout << std::format("Main thread: sent data to worker thread") << std::endl;
+                    }
+
+                    {
+                        std::unique_lock lock{worker.mutex};
+
+                        // std::cout << "Main thread: got lock again" << std::endl;
+
+                        worker.cond2.wait(lock, [&has_result = worker.has_result]{ return has_result; });
+
+                        std::cout << std::format("Main thread: got value {}", worker.data_out) << std::endl;
+
+                        worker.has_result = false;
+
+                        children_with_scores.emplace_back(&child, worker.data_out);
+                    }
+
+                    child_idx++;
+                }
+            }
+        }
 
         auto projection = &std::pair<game_tree*, score_t>::second;
 
@@ -227,41 +270,25 @@ struct game_tree {
     }
 };
 
+score_t chess_ai_state::thread_pool_t::worker::do_work(game_tree* game_tree) {
+    score_t alpha = std::numeric_limits<decltype(alpha)>::min();
+    score_t beta = std::numeric_limits<decltype(beta)>::max();
+
+    std::cout << "Calculating" << std::endl;
+    std::cout << "start_depth: " << game_tree->start_depth;
+
+    return game_tree->minimax(game_tree->start_depth, false, alpha, beta);
+}
+
 void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
-    while(true) {
-        int i = 1;
-        for(auto& [thread, mutex, cond, cond2, data_in, data_out] : thread_pool->workers) {
-            std::scoped_lock lock{mutex};
-
-            // std::cout << "Main thread: got lock" << std::endl;
-
-            data_in = i++;
-
-            cond.notify_one();
-
-            std::cout << std::format("Main thread: sent {} to worker thread", data_in) << std::endl;
-        }
-
-        for(auto& [thread, mutex, cond, cond2, data_in, data_out] : thread_pool->workers) {
-            std::unique_lock lock{mutex};
-
-            // std::cout << "Main thread: got lock again" << std::endl;
-
-            cond2.wait(lock, [&data_out]{ return data_out != 0; });
-
-            std::cout << std::format("Main thread: got value {}", data_out) << std::endl;
-
-            // data_in++;
-        }
-    }
-
-
     if(board.status != game_status::normal) throw std::runtime_error{"Game is over"};
     if(difficulty == 0) throw std::runtime_error{"Difficulty must be at least 1"};
 
-    game_tree tree{this, board, board.current_player};
+    game_tree tree{this, board, board.current_player, {}, difficulty};
 
-    board = tree.get_best_move(difficulty);
+    std::cout << "start_depth: " << tree.start_depth;
+
+    board = tree.get_best_move(difficulty, *this);
 }
 
 } // namespace chess::ai
