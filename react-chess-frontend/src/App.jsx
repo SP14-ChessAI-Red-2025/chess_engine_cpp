@@ -27,7 +27,7 @@ function App() {
   const [fiftyMoveCounter, setFiftyMoveCounter] = useState(0);
   const [moveHistory, setMoveHistory] = useState([]); // Tracks moves in chess notation
   const [boardEvaluation, setBoardEvaluation] = useState(null); // Stores the evaluation score
-  const [showCoverPage, setShowCoverPage] = useState(true); // State to toggle cover page
+  const [showCoverPage, setShowCoverPage] = useState(true);
 
   // --- Helper to Get Status String ---
   const getGameStatusMessage = (state) => {
@@ -493,7 +493,13 @@ function App() {
   const highlightSquares = getHighlightSquares(); // Assumes getHighlightSquares is defined above
 
   const handleProceed = () => {
+    setGameMode(GameMode.SELECT); // Ensure gameMode is reset to SELECT
     setShowCoverPage(false); // Hide cover page and show game mode selector
+  };
+
+  const handleReturnToCoverPage = () => {
+    setShowCoverPage(true); // Show Cover Page
+    setGameMode(null); // Reset game mode
   };
 
   return (
@@ -501,7 +507,10 @@ function App() {
       {showCoverPage ? (
         <CoverPage onProceed={handleProceed} />
       ) : gameMode === GameMode.SELECT ? (
-        <GameModeSelector onSelectMode={handleGameModeSelect} />
+        <GameModeSelector 
+          onSelectMode={handleGameModeSelect} 
+          onReturnToCoverPage={handleReturnToCoverPage} 
+        />
       ) : (
         <div className="game-container">
           <div className="board-container">

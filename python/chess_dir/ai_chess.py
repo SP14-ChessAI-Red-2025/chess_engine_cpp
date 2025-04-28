@@ -271,7 +271,7 @@ class ChessEngine:
 
         return self.board_state
 
-    def ai_move(self, difficulty: int = 3):
+    def ai_move(self, difficulty: int = 2):
         """ Asks the C++ AI to calculate and apply its best move using the EngineHandle API. """
         if not self._lib: raise RuntimeError("Library not loaded.")
         if not self._engine_handle: raise RuntimeError("Engine handle not initialized.")
@@ -490,7 +490,7 @@ if __name__ == "__main__":
 
                     # Example: Let AI make a move
                     print("\nAI is thinking...")
-                    engine.ai_move(difficulty=3) # Use moderate difficulty
+                    engine.ai_move(difficulty=2) # SET DIFFICULTY HERE
                     print("AI has moved.")
                     engine.print_board()
                     # print(f"Evaluation after AI move: {engine.evaluate_board():.2f}")

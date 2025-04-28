@@ -1,6 +1,8 @@
 import React from 'react';
 import './CoverPage.css'; // Create a CSS file for styling if needed
 
+const imageBase = '/website/images/';
+
 const CoverPage = ({ onProceed }) => {
   return (
     <div className="cover-page">
@@ -10,19 +12,19 @@ const CoverPage = ({ onProceed }) => {
         <h2>Team Members</h2>
         <div className="team-members">
           <div className="member">
-            <img src="/images/carter.png" alt="Carter Barnard" className="bio-pic" />
+            <img src={`${imageBase}carter.png`} alt="Carter Barnard" className="bio-pic" />
             <p>Carter Barnard</p>
           </div>
           <div className="member">
-            <img src="/images/andy.png" alt="Andy Kenmoe" className="bio-pic" />
+            <img src={`${imageBase}andy.png`} alt="Andy Kenmoe" className="bio-pic" />
             <p>Andy Kenmoe</p>
           </div>
           <div className="member">
-            <img src="/images/bailey.png" alt="Bailey Sweeney" className="bio-pic" />
+            <img src={`${imageBase}bailey.png`} alt="Bailey Sweeney" className="bio-pic" />
             <p>Bailey Sweeney</p>
           </div>
           <div className="member">
-            <img src="/images/alec.png" alt="Alec Walsh" className="bio-pic" />
+            <img src={`${imageBase}alec.png`} alt="Alec Walsh" className="bio-pic" />
             <p>Alec Walsh</p>
           </div>
         </div>
@@ -55,7 +57,7 @@ const CoverPage = ({ onProceed }) => {
       </div>
 
       <button className="proceed-button" onClick={onProceed}>
-        Optional - Proceed to the Web-based Game (Depth 3)
+        Optional - Proceed to the Web-based Game (Depth 4)
       </button>
     </div>
   );

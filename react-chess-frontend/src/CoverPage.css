@@ -1,12 +1,14 @@
 .cover-page {
   text-align: center;
+  border-radius: 15px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   padding: 20px;
-  background-color: #f4f4f4;
+  background-color: #3a3f4a;
 }
 
 .project-title {
   font-size: 2.5rem;
-  color: #333;
+  color: #ffffff;
 }
 
 .project-subtitle {
