@@ -74,3 +74,26 @@
 .proceed-button:hover {
   background-color: #0056b3;
 }
+
+.summary-section {
+  margin-top: 20px;
+  text-align: left;
+  padding: 10px;
+  background-color: #3a3f4a;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.summary-section h3 {
+  font-size: 1.5rem;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.project-summary {
+  font-size: 1rem;
+  color: #ccc;
+  line-height: 1.5;
+  word-wrap: break-word; /* Ensures long words wrap */
+  overflow-wrap: break-word; /* Modern alternative for word wrapping */
+}
