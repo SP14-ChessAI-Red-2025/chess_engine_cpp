@@ -136,7 +136,7 @@ def convert_pt_to_onnx(pt_path, onnx_path, input_size, embed_dim, hidden1_dim, h
     try:
         # --- Prepare Model for Export ---
         # 1. Instantiate the *updated* model structure
-        model = NNUE(input_size=input_size, embed_dim=embed_dim, hidden1_dim=hidden1_dim, hidden2_dim=hidden2_dim)
+        model = NNUE(feature_dim=input_size, embed_dim=embed_dim, hidden1_dim=hidden1_dim, dropout_prob=0.4)
 
         # 2. Load the state dictionary from the .pt file
         print("Loading state dictionary...")
@@ -152,10 +152,10 @@ def convert_pt_to_onnx(pt_path, onnx_path, input_size, embed_dim, hidden1_dim, h
 
         # --- Create Dummy Input ---
         # Create dummy input matching the model's forward signature (indices, offsets)
-        dummy_num_features = 25 # Example number of active features
+        dummy_num_features = 25  # Example number of active features
         dummy_indices = torch.randint(0, input_size, (dummy_num_features,), dtype=torch.long)
-        dummy_offsets = torch.tensor([0], dtype=torch.long) # Batch size 1
-        dummy_input_tuple = (dummy_indices, dummy_offsets) # Input must be a tuple
+        dummy_offsets = torch.tensor([0], dtype=torch.long)  # Batch size 1
+        dummy_input_tuple = (dummy_indices, dummy_offsets)  # Input must be a tuple
 
         print("Using Dummy Input Shapes for ONNX Export:")
         print(f"  Indices: {dummy_input_tuple[0].shape}")
@@ -168,11 +168,11 @@ def convert_pt_to_onnx(pt_path, onnx_path, input_size, embed_dim, hidden1_dim, h
             dummy_input_tuple,          # model input (tuple)
             onnx_path,                  # where to save the model
             export_params=True,         # store weights in the model file
-            opset_version=opset_version,# ONNX version
+            opset_version=opset_version,  # ONNX version
             do_constant_folding=True,   # optimize constants
-            input_names=['feature_indices', 'offsets'], # input names
-            output_names=['evaluation'], # output names
-            dynamic_axes={'feature_indices': {0: 'num_total_features'}, # variable length axes
+            input_names=['feature_indices', 'offsets'],  # input names
+            output_names=['evaluation'],  # output names
+            dynamic_axes={'feature_indices': {0: 'num_total_features'},  # variable length axes
                           'offsets': {0: 'batch_size'},
                           'evaluation': {0: 'batch_size'}}
         )
@@ -239,13 +239,14 @@ if __name__ == "__main__":
                         help="Path to save the output ONNX model file (.onnx).")
 
     # Updated arguments to match the new NNUE structure based on the image
+    # Layer sizes: 768 -> 256 -> 32 -> 16 -> 1
     parser.add_argument("--input_size", type=int, default=768,
                         help="Input dimension (feature vocabulary size).")
-    parser.add_argument("--embed_dim", type=int, default=128,
+    parser.add_argument("--embed_dim", type=int, default=256,
                         help="Embedding dimension (output of first layer).")
-    parser.add_argument("--hidden1_dim", type=int, default=256,
+    parser.add_argument("--hidden1_dim", type=int, default=32,
                         help="Output dimension of the first hidden layer.")
-    parser.add_argument("--hidden2_dim", type=int, default=128,
+    parser.add_argument("--hidden2_dim", type=int, default=16,
                         help="Output dimension of the second hidden layer.")
     parser.add_argument("--opset", type=int, default=11,
                         help="ONNX opset version to use for export (default: 11).")
