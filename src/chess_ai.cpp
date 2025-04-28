@@ -7,14 +7,83 @@
 #include <optional>
 #include <stdexcept>
 #include <cassert>
+#include <iostream>
+
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 namespace chess::ai {
+
+struct game_tree;
+
+struct chess_ai_state::thread_pool_t {
+    struct worker {
+        std::thread thread;
+        std::mutex mutex;
+        std::condition_variable cond;
+        std::condition_variable cond2;
+
+        int data_in = 0;
+        int data_out = 0;
+
+        worker() {
+            thread = std::thread{[&mutex = mutex](int& data_in, int& data_out, std::condition_variable& cond, std::condition_variable& cond2) {
+                while(true) {
+                    // std::cout << "Worker iter" << std::endl;
+                    std::unique_lock lock{mutex};
+                    // std::cout << "Worker: got lock" << std::endl;
+
+                    cond.wait(lock, [&data_in] { return data_in != 0; });
+
+                    // std::cout << "Worker: done waiting" << std::endl;
+
+                    // if(data_in == 0) {
+                    //     std::cout << std::format("Exiting worker thread") << std::endl;
+                    //     break;
+                    // }
+
+                    std::cout << std::format("Worker: got data, i is {}", data_in) << std::endl;
+
+                    data_out = data_in * 2;
+
+                    std::cout << std::format("Worker: wrote {}", data_out) << std::endl;
+
+                    // lock.unlock();
+
+                    data_in = 0;
+
+                    cond2.notify_one();
+
+                    std::cout << std::format("Worker: notify_one()") << std::endl;
+                }
+            }, std::ref(data_in), std::ref(data_out), std::ref(cond), std::ref(cond2)};
+        }
+
+        ~worker() {
+            if(thread.joinable()) {
+                cond.notify_one();
+
+                thread.join();
+                std::cout << "Joining" << std::endl;
+            }
+        }
+    };
+
+    worker workers[2] = {};
+};
 
 chess_ai_state::chess_ai_state(const char* model_path)
 #ifdef NNUE_ENABLED
     : nnue_evaluator{model_path}
 #endif
-{}
+{
+    this->thread_pool = new thread_pool_t{};
+}
+
+chess_ai_state::~chess_ai_state() {
+    delete thread_pool;
+}
 
 using score_t = double;
 
@@ -159,6 +228,34 @@ struct game_tree {
 };
 
 void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
+    while(true) {
+        int i = 1;
+        for(auto& [thread, mutex, cond, cond2, data_in, data_out] : thread_pool->workers) {
+            std::scoped_lock lock{mutex};
+
+            // std::cout << "Main thread: got lock" << std::endl;
+
+            data_in = i++;
+
+            cond.notify_one();
+
+            std::cout << std::format("Main thread: sent {} to worker thread", data_in) << std::endl;
+        }
+
+        for(auto& [thread, mutex, cond, cond2, data_in, data_out] : thread_pool->workers) {
+            std::unique_lock lock{mutex};
+
+            // std::cout << "Main thread: got lock again" << std::endl;
+
+            cond2.wait(lock, [&data_out]{ return data_out != 0; });
+
+            std::cout << std::format("Main thread: got value {}", data_out) << std::endl;
+
+            // data_in++;
+        }
+    }
+
+
     if(board.status != game_status::normal) throw std::runtime_error{"Game is over"};
     if(difficulty == 0) throw std::runtime_error{"Difficulty must be at least 1"};
 
