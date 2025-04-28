@@ -22,7 +22,7 @@ using score_t = double;
 // The AI currently ignores resignations and claiming draws
 bool should_consider_move(chess_move move) {
     return move.type != move_type::resign && move.type != move_type::claim_draw;
-};
+}
 
 // A positive result is good for player, negative is bad for player
 score_t rank_board_old(const chess_ai_state& ai_state, const board_state& board, player player) {
