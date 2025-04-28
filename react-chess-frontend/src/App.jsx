@@ -1,6 +1,7 @@
 // src/App.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Board from './Board';
+import CoverPage from './CoverPage';
 import GameModeSelector from './GameModeSelector';
 import './App.css';
 
@@ -26,6 +27,7 @@ function App() {
   const [fiftyMoveCounter, setFiftyMoveCounter] = useState(0);
   const [moveHistory, setMoveHistory] = useState([]); // Tracks moves in chess notation
   const [boardEvaluation, setBoardEvaluation] = useState(null); // Stores the evaluation score
+  const [showCoverPage, setShowCoverPage] = useState(true); // State to toggle cover page
 
   // --- Helper to Get Status String ---
   const getGameStatusMessage = (state) => {
@@ -178,20 +180,13 @@ function App() {
         setMoveHistory((prevHistory) => [...prevHistory, newState.last_move.notation]);
       }
 
-      setFiftyMoveCounter((prevCounter) => {
-        const newCounter = newState.last_move && (newState.last_move.piece === PieceType.PAWN || newState.last_move.is_capture)
-          ? 0
-          : prevCounter + 1;
-
-        // Check for fifty-move rule
-        if (newCounter >= 50) {
-          console.log("Fifty-move rule triggered. Declaring a draw.");
-          newState.status = GameStatus.DRAW;
-          setStatusMessage("Draw by Fifty-Move Rule");
-        }
-
-        return newCounter;
-      });
+      // Use `turns_since_last_capture_or_pawn` to check for the fifty-move rule
+      const turnsSinceLastCaptureOrPawn = newState.turns_since_last_capture_or_pawn || 0;
+      if (turnsSinceLastCaptureOrPawn >= 50) {
+        console.log("Fifty-move rule triggered. Declaring a draw.");
+        newState.status = GameStatus.DRAW;
+        setStatusMessage("Draw by Fifty-Move Rule");
+      }
 
       return newState;
     });
@@ -497,92 +492,98 @@ function App() {
   // --- Render Logic ---
   const highlightSquares = getHighlightSquares(); // Assumes getHighlightSquares is defined above
 
+  const handleProceed = () => {
+    setShowCoverPage(false); // Hide cover page and show game mode selector
+  };
+
   return (
-  <div className="App">
-    {gameMode === GameMode.SELECT ? (
-      <GameModeSelector onSelectMode={handleGameModeSelect} />
-    ) : (
-      <div className="game-container">
-        <div className="board-container">
-          <h1>Chess AI</h1>
+    <div className="App">
+      {showCoverPage ? (
+        <CoverPage onProceed={handleProceed} />
+      ) : gameMode === GameMode.SELECT ? (
+        <GameModeSelector onSelectMode={handleGameModeSelect} />
+      ) : (
+        <div className="game-container">
+          <div className="board-container">
+            <h1>Chess AI</h1>
 
-          {/* Game Status */}
-          <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
+            {/* Game Status */}
+            <div className={`game-info ${isLoading ? 'loading-active' : ''}`}>{statusMessage}</div>
 
-          {/* Board or Loading Message */}
-          {boardState && Array.isArray(boardState.pieces) ? (
-            <Board
-              boardPieces={boardState.pieces}
-              onSquareClick={handleSquareClick}
-              selectedSquare={selectedSquare}
-              highlightSquares={highlightSquares}
-            />
-          ) : (
-            <div className="loading">{isLoading ? 'Loading...' : 'Waiting for Server...'}</div>
-          )}
+            {/* Board or Loading Message */}
+            {boardState && Array.isArray(boardState.pieces) ? (
+              <Board
+                boardPieces={boardState.pieces}
+                onSquareClick={handleSquareClick}
+                selectedSquare={selectedSquare}
+                highlightSquares={highlightSquares}
+              />
+            ) : (
+              <div className="loading">{isLoading ? 'Loading...' : 'Waiting for Server...'}</div>
+            )}
 
-          {/* Resign Button */}
-          <button
-            onClick={handleResign}
-            disabled={isLoading || !boardState || boardState.status !== GameStatus.NORMAL}
-            style={{ marginTop: '15px', marginRight: '10px' }}
-          >
-            Resign
-          </button>
+            {/* Resign Button */}
+            <button
+              onClick={handleResign}
+              disabled={isLoading || !boardState || boardState.status !== GameStatus.NORMAL}
+              style={{ marginTop: '15px', marginRight: '10px' }}
+            >
+              Resign
+            </button>
 
-          {/* Reset Board Button */}
-          <button
-            onClick={handleResetGame}
-            disabled={isLoading}
-            style={{ marginTop: '15px', marginRight: '10px' }}
-          >
-            Reset Board
-          </button>
+            {/* Reset Board Button */}
+            <button
+              onClick={handleResetGame}
+              disabled={isLoading}
+              style={{ marginTop: '15px', marginRight: '10px' }}
+            >
+              Reset Board
+            </button>
 
-          {/* Change Mode Button */}
-          <button
-            onClick={returnToModeSelect}
-            disabled={isLoading}
-            style={{ marginTop: '15px' }}
-          >
-            Change Mode
-          </button>
-        </div>
-
-        {/* Game Info Sidebar */}
-        <div className="sidebar">
-          <h2>Game Info</h2>
-          <div className="game-info-section">
-            <strong>Castling Rights:</strong>
-            <p>{getCastlingRights(boardState)}</p>
-          </div>
-          <div className="game-info-section">
-            <strong>Board Evaluation:</strong>
-            <p>
-              {typeof boardEvaluation === "number"
-                ? `${boardEvaluation.toFixed(2)}`
-                : "Evaluating..."}
-            </p>
+            {/* Change Mode Button */}
+            <button
+              onClick={returnToModeSelect}
+              disabled={isLoading}
+              style={{ marginTop: '15px' }}
+            >
+              Change Mode
+            </button>
           </div>
 
-          {/* Move History Section */}
-          <div className="move-history-section">
-            <h2>Move History</h2>
-            <div className="move-history-container">
-              {getTurnHistory(moveHistory).map((turn, index) => (
-                <div key={index} className="turn">
-                  <strong>{index + 1}.</strong> {/* Turn number */}
-                  <span>{turn.white || "—"}</span> {/* White's move */}
-                  <span>{turn.black || "—"}</span> {/* Black's move */}
-                </div>
-              ))}
+          {/* Game Info Sidebar */}
+          <div className="sidebar">
+            <h2>Game Info</h2>
+            <div className="game-info-section">
+              <strong>Castling Rights:</strong>
+              <p>{getCastlingRights(boardState)}</p>
+            </div>
+            <div className="game-info-section">
+              <strong>Board Evaluation:</strong>
+              <p>
+                {typeof boardEvaluation === "number"
+                  ? `${boardEvaluation.toFixed(2)}`
+                  : "Evaluating..."}
+              </p>
+            </div>
+
+            {/* Move History Section */}
+            <div className="move-history-section">
+              <h2>Move History</h2>
+              <div className="move-history-container">
+                {getTurnHistory(moveHistory).map((turn, index) => (
+                  <div key={index} className="turn">
+                    <strong>{index + 1}.</strong> {/* Turn number */}
+                    <span>{turn.white || "—"}</span> {/* White's move */}
+                    <span>{turn.black || "—"}</span> {/* Black's move */}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    )}
-  </div>
-);
+      )}
+    </div>
+  );
 }
 
 export default App;

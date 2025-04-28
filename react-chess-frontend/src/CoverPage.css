@@ -1,0 +1,74 @@
+.cover-page {
+  text-align: center;
+  padding: 20px;
+  background-color: #f4f4f4;
+}
+
+.project-title {
+  font-size: 2.5rem;
+  color: #333;
+}
+
+.project-subtitle {
+  font-size: 1.5rem;
+  color: #666;
+}
+
+.team-section {
+  margin: 20px 0;
+}
+
+.team-members {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.member {
+  text-align: center;
+}
+
+.bio-pic {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.course-info {
+  margin: 20px 0;
+  font-size: 1.2rem;
+}
+
+.links-section ul {
+  list-style: none;
+  padding: 0;
+}
+
+.links-section li {
+  margin: 10px 0;
+}
+
+.links-section a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.links-section a:hover {
+  text-decoration: underline;
+}
+
+.proceed-button {
+  margin-top: 20px;
+  padding: 10px 20px;
+  font-size: 1rem;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.proceed-button:hover {
+  background-color: #0056b3;
+}
