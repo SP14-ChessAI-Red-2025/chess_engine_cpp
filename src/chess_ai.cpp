@@ -13,6 +13,8 @@
 #include <mutex>
 #include <condition_variable>
 
+#define THREADING
+
 namespace chess::ai {
 
 struct game_tree;
@@ -86,12 +88,10 @@ chess_ai_state::chess_ai_state(const char* model_path)
     : nnue_evaluator{model_path}
 #endif
 {
-    this->thread_pool = new thread_pool_t{};
+    this->thread_pool = std::make_unique<thread_pool_t>();
 }
 
-chess_ai_state::~chess_ai_state() {
-    delete thread_pool;
-}
+chess_ai_state::~chess_ai_state() = default;
 
 // Whether the AI should consider the move
 // The AI currently ignores resignations and claiming draws
@@ -182,7 +182,7 @@ struct game_tree {
         if(maximizing) {
             score_t max_score = std::numeric_limits<decltype(max_score)>::min();
 
-            for(auto child : children) {
+            for(auto& child : children) {
                 auto score = child.minimax(depth - 1, false, alpha, beta);
 
                 max_score = std::max(score, max_score);
@@ -222,47 +222,80 @@ struct game_tree {
         std::vector<std::pair<game_tree*, score_t>> children_with_scores;
         children_with_scores.reserve(children.size());
 
-        // std::ranges::transform(children, std::back_inserter(children_with_scores), [=](game_tree& child) {
-        //     return std::make_pair(&child, child.minimax(depth - 1, false, alpha, beta));
-        // });
+#ifndef THREADING
+        score_t alpha = std::numeric_limits<decltype(alpha)>::min();
+        score_t beta = std::numeric_limits<decltype(beta)>::max();
+
+        std::ranges::transform(children, std::back_inserter(children_with_scores), [=](game_tree& child) {
+            std::cout << std::format("calling minimax(_, {}, {}, {})", false, alpha, beta) << std::endl;
+
+            auto val = child.minimax(depth - 1, false, alpha, beta);
+
+            std::cout << "Got value: " << val << std::endl;
+
+            return std::make_pair(&child, val);
+        });
+#else
 
         std::size_t child_idx = 0;
 
-        while(child_idx < children.size()) {
+        while(true) {
+            if(child_idx >= children.size()) {
+                goto done;
+            }
+
             for(std::size_t i = 0; i < std::size(ai_state.thread_pool->workers); i++) {
-                if(child_idx < children.size()) {
-                    auto& child = children[child_idx];
+                std::size_t child_idx_tmp = child_idx + i;
+
+                if(child_idx_tmp >= children.size()) {
+                    break;
+                }
+
+                auto& child = children[child_idx_tmp];
+
+                auto& worker = ai_state.thread_pool->workers[i];
+
+                {
+                    std::unique_lock lock{worker.mutex};
+
+                    worker.data_in = &child;
+
+                    worker.cond.notify_one();
+
+                    std::cout << std::format("Main thread: sent data to worker thread {}", i) << std::endl;
+                }
+            }
+
+            for(std::size_t i = 0; i < std::size(ai_state.thread_pool->workers); i++) {
+                std::size_t child_idx_tmp = child_idx + i;
+
+                if(child_idx_tmp >= children.size()) {
+                    break;
+                }
+
+                {
+                    auto& child = children[child_idx_tmp];
 
                     auto& worker = ai_state.thread_pool->workers[i];
 
-                    {
-                        std::unique_lock lock{worker.mutex};
+                    std::unique_lock lock{worker.mutex};
 
-                        worker.data_in = &child;
+                    // std::cout << "Main thread: got lock again" << std::endl;
 
-                        worker.cond.notify_one();
+                    worker.cond2.wait(lock, [&has_result = worker.has_result] { return has_result; });
 
-                        std::cout << std::format("Main thread: sent data to worker thread") << std::endl;
-                    }
+                    std::cout << std::format("Main thread: got value {}", worker.data_out) << std::endl;
 
-                    {
-                        std::unique_lock lock{worker.mutex};
+                    worker.has_result = false;
 
-                        // std::cout << "Main thread: got lock again" << std::endl;
-
-                        worker.cond2.wait(lock, [&has_result = worker.has_result]{ return has_result; });
-
-                        std::cout << std::format("Main thread: got value {}", worker.data_out) << std::endl;
-
-                        worker.has_result = false;
-
-                        children_with_scores.emplace_back(&child, worker.data_out);
-                    }
-
-                    child_idx++;
+                    children_with_scores.emplace_back(&child, worker.data_out);
                 }
             }
+
+            child_idx += std::size(ai_state.thread_pool->workers);
         }
+        done:
+#endif
 
         auto projection = &std::pair<game_tree*, score_t>::second;
 
@@ -271,13 +304,16 @@ struct game_tree {
 };
 
 score_t chess_ai_state::thread_pool_t::worker::do_work(game_tree* game_tree) {
-    score_t alpha = std::numeric_limits<decltype(alpha)>::min();
+    score_t alpha = -std::numeric_limits<decltype(alpha)>::max();
     score_t beta = std::numeric_limits<decltype(beta)>::max();
 
-    std::cout << "Calculating" << std::endl;
-    std::cout << "start_depth: " << game_tree->start_depth;
+    std::cout << std::format("calling minimax({}, {}, {}, {})", game_tree->start_depth - 1, false, alpha, beta) << std::endl;
 
-    return game_tree->minimax(game_tree->start_depth, false, alpha, beta);
+    auto val = game_tree->minimax(game_tree->start_depth - 1, false, alpha, beta);
+
+    std::cout << "Got value: " << val << std::endl;
+
+    return val;
 }
 
 void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
@@ -285,8 +321,6 @@ void chess_ai_state::make_move(board_state& board, std::int32_t difficulty) {
     if(difficulty == 0) throw std::runtime_error{"Difficulty must be at least 1"};
 
     game_tree tree{this, board, board.current_player, {}, difficulty};
-
-    std::cout << "start_depth: " << tree.start_depth;
 
     board = tree.get_best_move(difficulty, *this);
 }

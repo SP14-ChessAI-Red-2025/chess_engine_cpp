@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include "chess_rules.hpp"
 #include <chess_cpp/nnue_evaluator.hpp>
 
@@ -11,7 +13,7 @@ struct chess_ai_state {
 #endif
 
     struct thread_pool_t;
-    thread_pool_t* thread_pool;
+    std::unique_ptr<thread_pool_t> thread_pool;
 
     // model_path is unused if NNUE_ENABLE is not defined
     explicit chess_ai_state(const char* model_path);
