@@ -67,7 +67,7 @@ score_t rank_board_old(const chess_ai_state& ai_state, const board_state& board,
 
 score_t rank_board(chess_ai_state& ai_state, const board_state& board, player player) {
 #ifdef NNUE_ENABLED
-    return ai_state.nnue_evaluator.evaluate(board) * (player == player::white ? -1 : 1);
+    return ai_state.nnue_evaluator.evaluate(board) * (player == player::white ? 1 : -1);
 #else
     return rank_board_old(ai_state, board, player);
 #endif
