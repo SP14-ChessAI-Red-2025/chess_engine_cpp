@@ -2,6 +2,7 @@ import React from 'react';
 import './CoverPage.css'; // Create a CSS file for styling if needed
 
 const imageBase = '/website/images/';
+const docBase = '/website/documents/';
 
 const CoverPage = ({ onProceed }) => {
   return (
@@ -47,12 +48,12 @@ const CoverPage = ({ onProceed }) => {
         <h3>Navigation Links</h3>
         <ul>
           <li>
-            <a href="/documents/report.pdf" target="_blank" rel="noopener noreferrer">
+            <a href={`${docBase}report.pdf`} target="_blank" rel="noopener noreferrer">
               Project Report (PDF)
             </a>
           </li>
           <li>
-            <a href="/documents/final_presentation.mp4" target="_blank" rel="noopener noreferrer">
+            <a href={`${docBase}final_presentation.mp4`} target="_blank" rel="noopener noreferrer">
               Final Presentation Video
             </a>
           </li>
