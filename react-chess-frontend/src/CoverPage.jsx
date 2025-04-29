@@ -53,8 +53,18 @@ const CoverPage = ({ onProceed }) => {
             </a>
           </li>
           <li>
-            <a href={`${docBase}final_presentation.mp4`} target="_blank" rel="noopener noreferrer">
-              Final Presentation Video
+            <a href={`${docBase}final_presentation.mov`} target="_blank" rel="noopener noreferrer">
+              Final Presentation Video - MP4
+            </a>
+          </li>
+          <li>
+            <a href="https://www.youtube.com/watch?v=rnROCtE1tSg" target="_blank" rel="noopener noreferrer">
+            Final Presentation Video - Youtube
+            </a>
+          </li>
+          <li>
+            <a href="https://www.youtube.com/watch?v=m0rQI1WBixc" target="_blank" rel="noopener noreferrer">
+              Demo - Youtube
             </a>
           </li>
           <li>
